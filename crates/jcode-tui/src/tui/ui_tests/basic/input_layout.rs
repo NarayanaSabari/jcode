@@ -545,3 +545,30 @@ fn usage_footer_stays_below_multiline_input() {
         );
     }
 }
+
+#[test]
+fn composer_is_bottom_anchored_with_divider() {
+    let _lock = viewport_snapshot_test_lock();
+    for (width, height) in [(80, 24), (120, 40), (40, 16)] {
+        crate::tui::ui::clear_test_render_state_for_tests();
+        let state = TestState {
+            input: "BOTTOM_INPUT".into(),
+            suppress_info_widgets: true,
+            info_widget_data: info_widget::InfoWidgetData {
+                model: Some("gpt-6-astra".into()),
+                reasoning_effort: Some("low".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let text = buffer_to_text(&render_full(&state, width, height));
+        let rows: Vec<_> = text.lines().collect();
+        let input = rows
+            .iter()
+            .position(|row| row.contains("BOTTOM_INPUT"))
+            .expect(&text);
+        assert_eq!(input, height as usize - 4, "{text}");
+        assert!(rows[input - 1].contains("────"), "{text}");
+        assert!(rows[height as usize - 1].contains("Claude"), "{text}");
+    }
+}

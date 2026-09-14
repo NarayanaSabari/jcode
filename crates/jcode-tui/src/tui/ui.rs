@@ -3032,7 +3032,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Add 1 line for command suggestions, shell mode hints, or the Ctrl+Enter hint.
     let hint_line_height = input_ui::input_hint_line_height(app);
     let inline_block_height: u16 = inline_ui_height(app);
-    let inline_ui_gap_height: u16 = if inline_block_height > 0 { 1 } else { 0 };
+    let inline_ui_gap_height: u16 = 1; // divider above the composer
     let input_height = base_input_height + hint_line_height;
 
     if let Some(ref mut capture) = debug_capture {
@@ -3236,9 +3236,9 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         content_height
     };
 
-    // Use packed layout when content fits, scrolling layout otherwise
-    let use_packed = terminal_clear_collapsed
-        || (!swarm_page_active && content_height + fixed_height <= available_height);
+    // Keep the composer at the bottom even when the conversation is short.
+    // Explicit terminal clear retains its native collapsed layout.
+    let use_packed = terminal_clear_collapsed;
 
     // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut
     // All vertical chunks are within the chat_area (left column).
@@ -3518,6 +3518,14 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     if inline_block_height > 0 {
         draw_inline_ui(frame, app, chunks[5]);
     }
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "─".repeat(chunks[6].width as usize),
+            Style::default().fg(rgb(85, 92, 105)),
+        ))),
+        chunks[6],
+    );
 
     let input_cursor = input_ui::draw_input(
         frame,
