@@ -565,6 +565,8 @@ fn composer_is_bottom_anchored_with_divider() {
         let text = buffer_to_text(&render_full(&state, width, height));
         let rows: Vec<_> = text.lines().collect();
         assert!(rows[0].contains("velvet-otter-lab"), "{text}");
+        assert!(rows[0].contains("╭─"), "{text}");
+        assert!(rows[3].contains("╰─"), "{text}");
         assert!(!text.contains("/model to switch"), "{text}");
         let input = rows
             .iter()

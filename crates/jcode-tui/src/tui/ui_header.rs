@@ -1002,21 +1002,26 @@ fn build_workspace_header(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(dir);
-    let mut title = vec![
-        Span::styled("✦ ", Style::default().fg(rgb(190, 155, 255))),
-        Span::styled(
-            project.to_owned(),
-            Style::default().fg(header_name_color()).bold(),
-        ),
-    ];
+    let title = format!(
+        "✦ {}",
+        project
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect::<String>()
+    );
+    let mut status = Vec::new();
     if let Some(branch) = app.git_branch() {
-        title.push(Span::styled(
-            format!("  ⎇ {branch}"),
+        status.push(Span::styled(
+            format!("⎇ {branch}"),
             Style::default().fg(rgb(150, 180, 130)),
         ));
     }
-    let mut status = Vec::new();
+
+    let before_auth = status.len();
     if let Some(host) = crate::tui::ssh_remote_host() {
+        if !status.is_empty() {
+            status.push(Span::raw("   "));
+        }
         status.push(Span::styled(
             format!("Remote {host}"),
             Style::default().fg(dim_color()),
@@ -1036,46 +1041,75 @@ fn build_workspace_header(
             } else {
                 label.split('(').next().unwrap_or(&label)
             };
+            let color = match (provider, state) {
+                ("OpenAI", AuthState::Available) => rgb(91, 211, 190),
+                ("Claude", AuthState::Available) => rgb(235, 164, 125),
+                _ => auth_dot_color(state),
+            };
+            let symbol = if provider == "Claude" && state == AuthState::Available {
+                "✳"
+            } else {
+                auth_dot_char(state)
+            };
             status.push(Span::styled(
-                format!("{} {provider}", auth_dot_char(state)),
-                Style::default().fg(auth_dot_color(state)),
+                format!("{symbol} {provider}"),
+                Style::default().fg(color),
             ));
         }
-        if status.is_empty() {
+        if status.len() == before_auth {
+            if !status.is_empty() {
+                status.push(Span::raw("   "));
+            }
             status.push(Span::styled(
                 "/login to connect",
                 Style::default().fg(dim_color()),
             ));
         }
     }
-    status.push(Span::styled(
-        format!(
-            "   {} skills · {} MCP",
-            app.available_skills().len(),
-            app.mcp_servers().len()
+    let metadata = Line::from(vec![
+        Span::styled(
+            format!(
+                "{} skills · {} MCP",
+                app.available_skills().len(),
+                app.mcp_servers().len()
+            ),
+            Style::default().fg(dim_color()),
         ),
-        Style::default().fg(dim_color()),
-    ));
-    [Line::from(title), Line::from(status)]
-        .into_iter()
-        .map(|mut line| {
-            let mut remaining = width as usize;
-            for span in &mut line.spans {
-                let mut text = String::new();
-                for ch in span.content.chars().filter(|ch| !ch.is_control()) {
-                    let cells = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-                    if cells > remaining {
-                        break;
-                    }
-                    text.push(ch);
+        Span::styled(
+            "     /help  /resume",
+            Style::default().fg(rgb(157, 163, 175)),
+        ),
+    ]);
+    let border = Style::default().fg(rgb(85, 92, 105));
+    let mut card = render_rounded_box(
+        &title,
+        vec![Line::from(status), metadata],
+        (width as usize).saturating_sub(2).min(65),
+        border,
+    );
+    if let Some(top) = card.first_mut() {
+        let box_width = top.width();
+        let mut remaining = box_width.saturating_sub(6);
+        let label: String = title
+            .chars()
+            .take_while(|ch| {
+                let cells = unicode_width::UnicodeWidthChar::width(*ch).unwrap_or(0);
+                if cells > remaining {
+                    false
+                } else {
                     remaining -= cells;
+                    true
                 }
-                span.content = text.into();
-            }
-            line
-        })
-        .chain(std::iter::once(Line::from("")))
-        .collect()
+            })
+            .collect();
+        *top = Line::from(vec![
+            Span::styled("╭─ ", border),
+            Span::styled(label, Style::default().fg(rgb(190, 155, 255)).bold()),
+            Span::styled(format!(" {}╮", "─".repeat(remaining + 1)), border),
+        ]);
+    }
+    card.push(Line::from(""));
+    card
 }
 
 pub(in crate::tui) fn build_header_sections(
