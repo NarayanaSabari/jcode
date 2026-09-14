@@ -1813,3 +1813,64 @@ fn compact_page_height_matches_for_cost_based_usage() {
     let lines = super::render_page(InfoPageKind::CompactOnly, &data, inner);
     assert_eq!(lines.len() as u16, layout.pages[0].height);
 }
+
+#[test]
+fn activity_panel_stacks_only_activity_and_skips_pinned_diagrams() {
+    let _lock = crate::tui::ui::render_state_test_lock();
+    super::clear_widget_placements_for_tests();
+    let data = InfoWidgetData {
+        model: Some("gpt-6-astra".into()),
+        observed_context_tokens: Some(10_000),
+        todos: vec![crate::todo::TodoItem {
+            content: "Implement change".into(),
+            status: "in_progress".into(),
+            ..Default::default()
+        }],
+        swarm_info: Some(SwarmInfo {
+            managed_members: vec![managed_member("worker", "running", None)],
+            ..Default::default()
+        }),
+        background_info: Some(BackgroundInfo {
+            running_count: 1,
+            running_tasks: vec!["cargo test".into()],
+            ..Default::default()
+        }),
+        git_info: Some(super::GitInfo {
+            branch: "main".into(),
+            modified: 1,
+            staged: 0,
+            untracked: 0,
+            ahead: 0,
+            behind: 0,
+            dirty_files: vec!["src/main.rs".into()],
+        }),
+        diagrams: vec![super::DiagramInfo {
+            hash: 1,
+            width: 800,
+            height: 600,
+            label: None,
+        }],
+        ..Default::default()
+    };
+    let area = Rect::new(84, 0, 36, 40);
+    let placements = super::calculate_activity_placements(area, &data, true);
+    assert_eq!(
+        placements.iter().map(|p| p.kind).collect::<Vec<_>>(),
+        super::ACTIVITY_WIDGETS
+    );
+    assert!(super::swarm_strip_stands_down_for_dock());
+    for pair in placements.windows(2) {
+        assert!(pair[0].rect.bottom() < pair[1].rect.y);
+    }
+    assert_eq!(placements.last().unwrap().rect.bottom(), area.bottom());
+    let unpinned = super::calculate_activity_placements(area, &data, false);
+    assert!(!unpinned.iter().any(|p| p.kind == WidgetKind::Diagrams));
+    for height in 0..18 {
+        let small = Rect::new(84, 0, 36, height);
+        for placement in super::calculate_activity_placements(small, &data, true) {
+            assert!(placement.rect.bottom() <= small.bottom());
+            assert!(placement.rect.height >= 3);
+        }
+    }
+    super::clear_widget_placements_for_tests();
+}

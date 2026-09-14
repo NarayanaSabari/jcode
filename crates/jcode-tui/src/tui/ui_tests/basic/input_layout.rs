@@ -78,7 +78,6 @@ fn first_prompt_stays_visible_with_widgets_during_processing_at_47x51() {
             state.display_messages.push(DisplayMessage::user(PROMPT));
             state.messages_version += 1;
             request_tail_follow_snap();
-            let mut saw_widget = false;
 
             for (phase, status, stream) in [
                 ("sending", ProcessingStatus::Sending, ""),
@@ -105,7 +104,10 @@ fn first_prompt_stays_visible_with_widgets_during_processing_at_47x51() {
                         .take(area.height as usize)
                         .collect::<Vec<_>>()
                         .join("\n");
-                    saw_widget |= chat.contains(WIDGET);
+                    assert!(
+                        !chat.contains(WIDGET),
+                        "narrow transcript must not contain duplicate model widgets: {text}"
+                    );
                     assert!(
                         chat.contains(PROMPT),
                         "prompt disappeared: phase={phase}, centered={centered}, scrollbar={scrollbar}, now={}, area={area:?}, scroll={}, total={}\n{text}",
@@ -124,10 +126,6 @@ fn first_prompt_stays_visible_with_widgets_during_processing_at_47x51() {
             state.status = ProcessingStatus::Idle;
             terminal.draw(|frame| draw(frame, &state)).unwrap();
             assert!(buffer_to_text(&terminal).contains(PROMPT));
-            assert!(
-                saw_widget,
-                "fixture must actually paint a widget: centered={centered}, scrollbar={scrollbar}"
-            );
         }
     }
     info_widget::clear_widget_placements_for_tests();
@@ -577,4 +575,82 @@ fn composer_is_bottom_anchored_with_divider() {
         assert!(rows[input + 1].contains("────"), "{text}");
         assert!(rows[height as usize - 1].contains("Claude"), "{text}");
     }
+}
+
+#[test]
+fn activity_panel_reserves_transcript_space_and_preserves_composer_on_resize() {
+    let _lock = viewport_snapshot_test_lock();
+    pin_full_tier();
+    crate::tui::ui::clear_test_render_state_for_tests();
+    info_widget::clear_widget_placements_for_tests();
+    let mut state = TestState {
+        input: "COMPOSER_SENTINEL".into(),
+        working_dir: Some("/tmp/velvet-otter-lab".into()),
+        info_widget_data: info_widget::InfoWidgetData {
+            model: Some("gpt-6-astra".into()),
+            reasoning_effort: Some("low".into()),
+            todos: vec![crate::todo::TodoItem {
+                content: "TASK_SENTINEL".into(),
+                status: "in_progress".into(),
+                ..Default::default()
+            }],
+            background_info: Some(info_widget::BackgroundInfo {
+                running_count: 1,
+                running_tasks: vec!["BUILD_SENTINEL".into()],
+                ..Default::default()
+            }),
+            git_info: Some(info_widget::GitInfo {
+                branch: "main".into(),
+                modified: 1,
+                staged: 0,
+                untracked: 0,
+                ahead: 0,
+                behind: 0,
+                dirty_files: vec!["FILE_SENTINEL.rs".into()],
+            }),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    state.display_messages.push(DisplayMessage::assistant(
+        "Transcript content must wrap inside the conversation column. ".repeat(8),
+    ));
+    for (width, height, dock) in [(120, 40, true), (80, 24, false), (150, 50, true)] {
+        let text = buffer_to_text(&render_full(&state, width, height));
+        let messages = last_layout_snapshot().unwrap().messages_area;
+        assert_eq!(
+            messages.width,
+            if dock { width - 38 } else { width },
+            "{text}"
+        );
+        let rows: Vec<_> = text.lines().collect();
+        assert!(
+            rows[height as usize - 5].contains("COMPOSER_SENTINEL"),
+            "{text}"
+        );
+        assert!(rows[height as usize - 1].contains("Claude"), "{text}");
+        assert_eq!(text.contains("FILE_SENTINEL.rs"), dock, "{text}");
+        assert_eq!(text.contains("TASK_SENTINEL"), dock, "{text}");
+        assert_eq!(text.contains("BUILD_SENTINEL"), dock, "{text}");
+        assert_eq!(
+            text.matches("Astra").count(),
+            1,
+            "only footer should show model: {text}"
+        );
+        if dock {
+            for marker in ["TASK_SENTINEL", "BUILD_SENTINEL", "FILE_SENTINEL"] {
+                let row = rows.iter().find(|row| row.contains(marker)).unwrap();
+                let column = row.find(marker).unwrap();
+                // ASCII widget contents follow the Unicode border, so count cells.
+                let column = row[..column].chars().count();
+                assert!(column >= messages.right() as usize + 2, "{text}");
+            }
+        }
+    }
+    state.info_widget_data.todos.clear();
+    state.info_widget_data.background_info = None;
+    state.info_widget_data.git_info = None;
+    render_full(&state, 120, 40);
+    assert_eq!(last_layout_snapshot().unwrap().messages_area.width, 120);
+    info_widget::clear_widget_placements_for_tests();
 }

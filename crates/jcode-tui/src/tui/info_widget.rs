@@ -995,6 +995,68 @@ pub fn calculate_placements(
     outcome.visible
 }
 
+/// Activity widgets share a reserved right column, independent of transcript whitespace.
+const ACTIVITY_WIDGETS: [WidgetKind; 5] = [
+    WidgetKind::Todos,
+    WidgetKind::SwarmStatus,
+    WidgetKind::BackgroundTasks,
+    WidgetKind::GitStatus,
+    WidgetKind::Diagrams,
+];
+
+pub(crate) fn activity_panel_width(area: Rect, data: &InfoWidgetData, diagrams: bool) -> u16 {
+    if !is_enabled() || area.width < 110 || area.height < 18 {
+        return 0;
+    }
+    if ACTIVITY_WIDGETS
+        .iter()
+        .any(|&kind| (diagrams || kind != WidgetKind::Diagrams) && data.has_data_for(kind))
+    {
+        36
+    } else {
+        0
+    }
+}
+
+pub(crate) fn calculate_activity_placements(
+    area: Rect,
+    data: &InfoWidgetData,
+    diagrams: bool,
+) -> Vec<WidgetPlacement> {
+    let mut guard = get_or_init_state();
+    let Some(state) = guard.as_mut() else {
+        return Vec::new();
+    };
+    let mut placements = Vec::new();
+    let mut y = area.y;
+    if state.enabled && area.width > 2 {
+        for kind in ACTIVITY_WIDGETS {
+            if !data.has_data_for(kind) || (!diagrams && kind == WidgetKind::Diagrams) {
+                continue;
+            }
+            let remaining = area.bottom().saturating_sub(y);
+            if remaining < 4 {
+                break;
+            }
+            let height = calculate_widget_height(kind, data, area.width, remaining);
+            if height > 2 {
+                placements.push(WidgetPlacement {
+                    kind,
+                    rect: Rect::new(area.x, y, area.width, height),
+                    side: Side::Right,
+                });
+                y = y.saturating_add(height + 1);
+            }
+        }
+    }
+    state.anchors.clear();
+    state.placements = placements.clone();
+    if swarm_dock_engaged(state) {
+        state.swarm_dock_last_engaged = Some(Instant::now());
+    }
+    placements
+}
+
 /// How long the inline swarm strip keeps standing down after the SwarmStatus
 /// dock disengages. The dock's placement naturally churns while content
 /// streams past it (hidden-in-place blinks, anchor abandonment, re-homing a
@@ -1326,11 +1388,17 @@ fn render_single_widget(frame: &mut Frame, placement: &WidgetPlacement, data: &I
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(rgb(70, 70, 80)).dim());
 
-    if placement.kind == WidgetKind::WorkspaceMap {
-        block = block.title(Span::styled(
-            " Workspace ",
-            Style::default().fg(rgb(120, 120, 130)).dim(),
-        ));
+    let title = match placement.kind {
+        WidgetKind::WorkspaceMap => Some(" Workspace "),
+        WidgetKind::Todos => Some(" ✓ Tasks "),
+        WidgetKind::SwarmStatus => Some(" ✦ Swarm "),
+        WidgetKind::BackgroundTasks => Some(" ↻ Background "),
+        WidgetKind::GitStatus => Some(" ⎇ Git "),
+        WidgetKind::Diagrams => Some(" ◇ Diagrams "),
+        _ => None,
+    };
+    if let Some(title) = title {
+        block = block.title(Span::styled(title, Style::default().fg(rgb(170, 145, 210))));
     }
 
     let inner = block.inner(rect);

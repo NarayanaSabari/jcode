@@ -102,7 +102,6 @@ use changelog::get_grouped_changelog;
 use changelog::{ChangelogEntry, group_changelog_entries, parse_changelog_from};
 use debug_capture::{
     build_info_widget_summary, capture_widget_placements, rect_within_bounds, rects_overlap,
-    widget_overlaps_content,
 };
 pub use diagram_pane::{
     PinnedDiagramLiveDebugSnapshot, PinnedDiagramProbeRect, debug_probe_pinned_diagram,
@@ -3039,8 +3038,26 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         capture.render_order.push("prepare_messages".to_string());
     }
     let prep_start = Instant::now();
-    let chat_left_inset = left_aligned_content_inset(chat_area.width, app.centered_mode());
-    let wide_prepare_width = chat_area.width.saturating_sub(chat_left_inset);
+    let widget_data_start = Instant::now();
+    let widget_data = app.info_widget_data();
+    let widget_data_elapsed = widget_data_start.elapsed();
+    let activity_width = if app.info_widget_overlays_enabled()
+        && !swarm_page_active
+        && !app.onboarding_welcome_active()
+        && !super::idle_donut_active(app)
+        && !app.terminal_clear_collapsed()
+    {
+        info_widget::activity_panel_width(chat_area, &widget_data, diagram_area.is_none())
+    } else {
+        0
+    };
+    let transcript_width = chat_area.width.saturating_sub(if activity_width > 0 {
+        activity_width + 2
+    } else {
+        0
+    });
+    let chat_left_inset = left_aligned_content_inset(transcript_width, app.centered_mode());
+    let wide_prepare_width = transcript_width.saturating_sub(chat_left_inset);
     let narrow_prepare_width = wide_prepare_width.saturating_sub(1);
     let pinned_mermaid_aspect_ratio =
         diagram_area.and_then(|area| pinned_diagram_preferred_aspect_ratio(area, pane_position));
@@ -3097,9 +3114,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Elastic overscroll status line revealed when the user scrolls past the
     // bottom of the transcript. Rendered below the input footer.
     let overscroll_height: u16 = if app.chat_overscroll_active() { 1 } else { 0 };
-    let widget_data_start = Instant::now();
-    let widget_data = app.info_widget_data();
-    let widget_data_elapsed = widget_data_start.elapsed();
     let mut footer_lines = super::usage_footer::footer_lines(&widget_data, chat_area.width);
     // Reserve room for typing and the conversation even with many accounts.
     let composer_reserved = input_height
@@ -3354,7 +3368,16 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let draw_start = Instant::now();
 
     // Messages area is chunks[0] within the chat column (already excludes diagram).
-    let messages_area = chunks[0];
+    let messages_area = Rect {
+        width: transcript_width,
+        ..chunks[0]
+    };
+    let activity_area = Rect::new(
+        messages_area.right().saturating_add(2),
+        messages_area.y,
+        activity_width,
+        messages_area.height,
+    );
     let _ = swarm_strip_height;
     note_chat_layout(ChatLayoutMetrics {
         chat_area,
@@ -3568,16 +3591,16 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Draw info widget overlays (skip during idle animation - they look out of place)
     let mut widget_render_ms: Option<f32> = None;
     let mut placements: Vec<info_widget::WidgetPlacement> = Vec::new();
-    let widget_bounds = messages_area;
-    if app.info_widget_overlays_enabled()
-        && !widget_data.is_empty()
-        && !show_donut
-        && !swarm_page_active
-    {
+    let widget_bounds = activity_area;
+    if activity_width > 0 {
         if let Some(ref mut capture) = debug_capture {
             capture.render_order.push("render_info_widgets".to_string());
         }
-        placements = info_widget::calculate_placements(widget_bounds, &margins, &widget_data);
+        placements = info_widget::calculate_activity_placements(
+            widget_bounds,
+            &widget_data,
+            diagram_area.is_none(),
+        );
 
         if let Some(ref mut capture) = debug_capture {
             let placement_captures = capture_widget_placements(&placements);
@@ -3587,15 +3610,12 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 placements: placement_captures,
             });
 
-            // Detect overlaps with used content. Info widgets live inside the
-            // messages rectangle by design, so a whole-area overlap check is
-            // always true and useless; instead verify each placement still fits
-            // within the free margin the layout reported for the rows it covers.
+            // The activity column must remain outside the transcript.
             for placement in &placements {
-                if widget_overlaps_content(placement, widget_bounds, &margins) {
+                if rects_overlap(placement.rect, messages_area) {
                     capture.anomaly(format!(
-                        "Info widget {:?} intrudes into content (rect {:?})",
-                        placement.kind, placement.rect
+                        "Activity widget {:?} overlaps transcript",
+                        placement.kind
                     ));
                 }
                 if !rect_within_bounds(placement.rect, area) {
@@ -3649,17 +3669,17 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         overlays::draw_debug_overlay(frame, &placements, &chunks);
     }
 
-    // Session facts use actual final-frame cells for collision detection. They
-    // prefer the composer chrome and may climb into a few transcript-tail rows
-    // only when the right suffix is genuinely unused.
-    input_ui::draw_right_fact_stack(
-        frame,
-        app,
-        messages_area,
-        chunks[7],
-        chat_scrollbar_visible,
-        input_cursor,
-    );
+    // Very short terminals may have no room for the custom usage footer.
+    if footer_height == 0 {
+        input_ui::draw_right_fact_stack(
+            frame,
+            app,
+            messages_area,
+            chunks[7],
+            chat_scrollbar_visible,
+            input_cursor,
+        );
+    }
 
     // Command-suggestion popover: a late overlay pass so the palette floats
     // over existing rows (blank space, pinned footer, or the transcript tail)
