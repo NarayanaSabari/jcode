@@ -553,6 +553,7 @@ fn composer_is_bottom_anchored_with_divider() {
         crate::tui::ui::clear_test_render_state_for_tests();
         let state = TestState {
             input: "BOTTOM_INPUT".into(),
+            working_dir: Some("/tmp/velvet-otter-lab".into()),
             suppress_info_widgets: true,
             info_widget_data: info_widget::InfoWidgetData {
                 model: Some("gpt-6-astra".into()),
@@ -563,6 +564,8 @@ fn composer_is_bottom_anchored_with_divider() {
         };
         let text = buffer_to_text(&render_full(&state, width, height));
         let rows: Vec<_> = text.lines().collect();
+        assert!(rows[0].contains("velvet-otter-lab"), "{text}");
+        assert!(!text.contains("/model to switch"), "{text}");
         let input = rows
             .iter()
             .position(|row| row.contains("BOTTOM_INPUT"))

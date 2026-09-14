@@ -898,7 +898,11 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
         // the header at the same screen position when the first prompt
         // arrives; the padding then simply scrolls away as the transcript
         // grows instead of vanishing in one jump.
-        let pad_top = initial_header_pad_top(height, header_prepared.wrapped_lines.len());
+        let pad_top = if app.working_dir().is_some() {
+            0
+        } else {
+            initial_header_pad_top(height, header_prepared.wrapped_lines.len())
+        };
         let mut centered = build_top_pad_lines(width, pad_top);
         centered.reserve(wrapped_lines.len());
         centered.extend(wrapped_lines);
@@ -936,7 +940,11 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     // Re-apply the initial-screen centering pad above the header so the
     // transition from the empty screen to the first message does not shift
     // anything. The pad scrolls off naturally as the transcript grows.
-    let pad_top = initial_header_pad_top(height, header_prepared.wrapped_lines.len());
+    let pad_top = if app.working_dir().is_some() {
+        0
+    } else {
+        initial_header_pad_top(height, header_prepared.wrapped_lines.len())
+    };
     let padded_header = if pad_top > 0 {
         let mut lines = build_top_pad_lines(width, pad_top);
         lines.reserve(header_prepared.wrapped_lines.len());

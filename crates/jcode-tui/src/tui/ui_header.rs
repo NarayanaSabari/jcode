@@ -850,10 +850,7 @@ fn build_header_lines_with_auth(
         // The native protocol reports the active route, not a complete remote
         // credential inventory. Do not render the laptop's (or an empty)
         // inventory as if it described providers configured on the server.
-        (
-            format!("/login to authenticate on {host}"),
-            Vec::new(),
-        )
+        (format!("/login to authenticate on {host}"), Vec::new())
     } else {
         (
             "/login to add provider".to_string(),
@@ -994,12 +991,105 @@ pub(super) fn build_updates_box_lines(width: u16, max_lines: usize) -> Vec<Line<
 /// Build both header sections from one authentication snapshot. Credential
 /// discovery can touch several files on Windows, so the render path must not
 /// repeat it for the persistent and secondary portions of the same frame.
+fn build_workspace_header(
+    app: &dyn TuiState,
+    width: u16,
+    dir: &str,
+    auth: &AuthStatus,
+    active: ActiveCredentialOverrides,
+) -> Vec<Line<'static>> {
+    let project = std::path::Path::new(dir)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(dir);
+    let mut title = vec![
+        Span::styled("✦ ", Style::default().fg(rgb(190, 155, 255))),
+        Span::styled(
+            project.to_owned(),
+            Style::default().fg(header_name_color()).bold(),
+        ),
+    ];
+    if let Some(branch) = app.git_branch() {
+        title.push(Span::styled(
+            format!("  ⎇ {branch}"),
+            Style::default().fg(rgb(150, 180, 130)),
+        ));
+    }
+    let mut status = Vec::new();
+    if let Some(host) = crate::tui::ssh_remote_host() {
+        status.push(Span::styled(
+            format!("Remote {host}"),
+            Style::default().fg(dim_color()),
+        ));
+    } else {
+        for (label, state) in auth_full_specs(auth, active) {
+            if state == AuthState::NotConfigured {
+                continue;
+            }
+            if !status.is_empty() {
+                status.push(Span::raw("   "));
+            }
+            let provider = if label.starts_with("anthropic") {
+                "Claude"
+            } else if label.starts_with("openai") {
+                "OpenAI"
+            } else {
+                label.split('(').next().unwrap_or(&label)
+            };
+            status.push(Span::styled(
+                format!("{} {provider}", auth_dot_char(state)),
+                Style::default().fg(auth_dot_color(state)),
+            ));
+        }
+        if status.is_empty() {
+            status.push(Span::styled(
+                "/login to connect",
+                Style::default().fg(dim_color()),
+            ));
+        }
+    }
+    status.push(Span::styled(
+        format!(
+            "   {} skills · {} MCP",
+            app.available_skills().len(),
+            app.mcp_servers().len()
+        ),
+        Style::default().fg(dim_color()),
+    ));
+    [Line::from(title), Line::from(status)]
+        .into_iter()
+        .map(|mut line| {
+            let mut remaining = width as usize;
+            for span in &mut line.spans {
+                let mut text = String::new();
+                for ch in span.content.chars().filter(|ch| !ch.is_control()) {
+                    let cells = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cells > remaining {
+                        break;
+                    }
+                    text.push(ch);
+                    remaining -= cells;
+                }
+                span.content = text.into();
+            }
+            line
+        })
+        .chain(std::iter::once(Line::from("")))
+        .collect()
+}
+
 pub(in crate::tui) fn build_header_sections(
     app: &dyn TuiState,
     width: u16,
 ) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
     let auth = app.auth_status();
     let active = ActiveCredentialOverrides::from_app(app);
+    if let Some(dir) = app.working_dir() {
+        return (
+            build_workspace_header(app, width, &dir, &auth, active),
+            Vec::new(),
+        );
+    }
     (
         build_persistent_header_with_auth(app, width, &auth, active),
         build_header_lines_with_auth(app, width, &auth, active),
