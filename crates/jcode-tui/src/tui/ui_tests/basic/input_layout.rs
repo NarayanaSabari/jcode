@@ -366,7 +366,14 @@ fn test_copy_badge_reserves_right_margin_for_info_widgets() {
     };
     let copy_badge_ui = crate::tui::app::CopyBadgeUiState::default();
 
-    reserve_copy_badge_margins(&mut margins, 10, 13, &[(11, 'a')], &copy_badge_ui, Instant::now());
+    reserve_copy_badge_margins(
+        &mut margins,
+        10,
+        13,
+        &[(11, 'a')],
+        &copy_badge_ui,
+        Instant::now(),
+    );
 
     assert_eq!(margins.right_widths[0], 30);
     assert_eq!(margins.right_widths[1], 16);
@@ -440,7 +447,10 @@ fn test_copy_badge_truncation_marks_cut_content_with_ellipsis() {
         .iter()
         .map(|span| span.content.as_ref())
         .collect();
-    assert!(text.ends_with('…'), "cut content must show ellipsis: {text:?}");
+    assert!(
+        text.ends_with('…'),
+        "cut content must show ellipsis: {text:?}"
+    );
     assert!(line.width() <= 10);
 
     // Content that fits is left intact (trailing spaces trimmed only).
@@ -493,4 +503,37 @@ fn test_idle_donut_reserved_height_absorbs_composer_growth() {
 
     // Pathologically tall composer: reservation bottoms out at zero.
     assert_eq!(idle_donut_reserved_height(true, 40), 0);
+}
+
+#[test]
+fn usage_footer_stays_below_multiline_input() {
+    let _lock = viewport_snapshot_test_lock();
+    for (width, height) in [(80, 24), (40, 16), (120, 40)] {
+        crate::tui::ui::clear_test_render_state_for_tests();
+        let state = TestState {
+            input: "INPUT_FIRST\nINPUT_LAST".into(),
+            suppress_info_widgets: true,
+            info_widget_data: info_widget::InfoWidgetData {
+                model: Some("gpt-6-astra".into()),
+                reasoning_effort: Some("low".into()),
+                context_limit: Some(200_000),
+                observed_context_tokens: Some(24_000),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let text = buffer_to_text(&render_full(&state, width, height));
+        let input_row = text
+            .lines()
+            .position(|line| line.contains("INPUT_LAST"))
+            .expect(&text);
+        let context_row = text
+            .lines()
+            .position(|line| line.contains("Context"))
+            .expect(&text);
+        assert!(
+            context_row > input_row,
+            "footer must follow all input rows:\n{text}"
+        );
+    }
 }

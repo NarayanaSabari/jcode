@@ -69,6 +69,7 @@ pub mod test_harness;
 pub mod theme_detect;
 mod ui;
 mod ui_diff;
+mod usage_footer;
 pub mod usage_overlay;
 pub mod visual_debug;
 pub mod workspace_client;

@@ -51,6 +51,53 @@ static PROVIDER_USAGE_CACHE: std::sync::OnceLock<
     std::sync::Mutex<HashMap<String, (Instant, ProviderUsage)>>,
 > = std::sync::OnceLock::new();
 
+/// Nonblocking all-account snapshot for the input footer.
+#[derive(Clone, Default)]
+pub struct ProviderUsageSnapshot {
+    pub reports: Vec<ProviderUsage>,
+    pub refreshing: bool,
+    pub stale: bool,
+}
+
+static FOOTER_REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+static FOOTER_LAST_REFRESH: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+
+pub fn provider_usage_snapshot() -> ProviderUsageSnapshot {
+    let now = Instant::now();
+    let mut snapshot = ProviderUsageSnapshot::default();
+    if let Some(cache) = PROVIDER_USAGE_CACHE.get()
+        && let Ok(map) = cache.try_lock()
+    {
+        snapshot.reports = map.values().map(|(_, report)| report.clone()).collect();
+        snapshot.stale = map
+            .values()
+            .any(|(at, report)| !provider_usage_cache_is_fresh(now, *at, report));
+        sort_reports_most_recent_first(&mut snapshot.reports);
+    }
+    if let Ok(handle) = tokio::runtime::Handle::try_current()
+        && let Ok(mut last) = FOOTER_LAST_REFRESH.try_lock()
+        && last.is_none_or(|at| now.duration_since(at) >= Duration::from_secs(60))
+        && FOOTER_REFRESH_IN_FLIGHT
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    {
+        *last = Some(now);
+        struct RefreshGuard;
+        impl Drop for RefreshGuard {
+            fn drop(&mut self) {
+                FOOTER_REFRESH_IN_FLIGHT.store(false, Ordering::SeqCst);
+            }
+        }
+        let guard = RefreshGuard;
+        handle.spawn(async move {
+            let _guard = guard;
+            let _ = fetch_all_provider_usage().await;
+        });
+    }
+    snapshot.refreshing = FOOTER_REFRESH_IN_FLIGHT.load(Ordering::SeqCst);
+    snapshot
+}
+
 async fn fetch_anthropic_usage_data(access_token: String, cache_key: String) -> Result<UsageData> {
     if let Some(cached) = cached_anthropic_usage(&cache_key) {
         return Ok(cached);
@@ -159,6 +206,9 @@ pub async fn fetch_all_provider_usage_progressive<F>(mut on_update: F) -> Vec<Pr
 where
     F: FnMut(ProviderUsageProgress) + Send,
 {
+    // Share one refresh between the footer and explicit /usage requests.
+    static REFRESH: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _refresh = REFRESH.lock().await;
     let cache = PROVIDER_USAGE_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
 
     let now = Instant::now();
@@ -189,7 +239,10 @@ where
         return cached_results;
     }
 
-    let mut results = cached_results.clone();
+    // OAuth collectors return an error report on transient failure, so only
+    // current accounts should survive refresh. Other collectors may return
+    // no report on failure and still need their previous cached value.
+    let mut results = retained_usage_reports(&cached_results);
     if !cached_results.is_empty() {
         on_update(ProviderUsageProgress {
             results: cached_results,
@@ -253,6 +306,52 @@ where
     });
 
     results
+}
+
+fn retained_usage_reports(cached: &[ProviderUsage]) -> Vec<ProviderUsage> {
+    cached
+        .iter()
+        .filter(|report| {
+            !report
+                .extra_info
+                .iter()
+                .any(|(key, _)| key == "Account label")
+        })
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod footer_cache_tests {
+    use super::*;
+
+    #[test]
+    fn refresh_prunes_disconnected_oauth_but_retains_fallible_provider_cache() {
+        let cached = vec![
+            ProviderUsage {
+                provider_name: "Anthropic removed".into(),
+                extra_info: vec![("Account label".into(), "removed".into())],
+                ..Default::default()
+            },
+            ProviderUsage {
+                provider_name: "OpenRouter".into(),
+                ..Default::default()
+            },
+        ];
+        let mut results = retained_usage_reports(&cached);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].provider_name, "OpenRouter");
+        upsert_provider_usage(
+            &mut results,
+            ProviderUsage {
+                provider_name: "Anthropic connected".into(),
+                error: Some("temporarily unavailable".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(results.len(), 2);
+        assert!(results[1].error.is_some());
+    }
 }
 
 fn upsert_provider_usage(results: &mut Vec<ProviderUsage>, report: ProviderUsage) {
@@ -435,6 +534,9 @@ fn enqueue_anthropic_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provide
                         creds.expires_at,
                     )
                     .await;
+                    report
+                        .extra_info
+                        .push(("Account label".into(), "default".into()));
                     attach_activity(&mut report, "claude:oauth:default");
                     Some(report)
                 });
@@ -474,6 +576,8 @@ fn enqueue_anthropic_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provide
         };
 
         tasks.spawn(async move {
+            let account_email = account.email.clone();
+            let account_label = account.label.clone();
             let source_key = format!("claude:oauth:{}", account.label);
             let mut report = fetch_anthropic_usage_for_token(
                 label,
@@ -483,6 +587,12 @@ fn enqueue_anthropic_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provide
                 account.expires,
             )
             .await;
+            report
+                .extra_info
+                .push(("Account label".into(), account_label));
+            if let Some(email) = account_email {
+                report.extra_info.push(("Account email".into(), email));
+            }
             attach_activity(&mut report, &source_key);
             Some(report)
         });
@@ -503,6 +613,7 @@ fn enqueue_openai_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<ProviderUs
                 account_count,
                 active_label.as_deref() == Some(&account.label),
             );
+            let account_email = account.email.clone();
             let account_label = account.label;
             let creds = auth::codex::CodexCredentials {
                 access_token: account.access_token,
@@ -515,6 +626,12 @@ fn enqueue_openai_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<ProviderUs
                 let source_key = format!("openai:oauth:{}", account_label);
                 let mut report =
                     fetch_openai_usage_for_account(display_name, creds, Some(&account_label)).await;
+                report
+                    .extra_info
+                    .push(("Account label".into(), account_label));
+                if let Some(email) = account_email {
+                    report.extra_info.push(("Account email".into(), email));
+                }
                 attach_activity(&mut report, &source_key);
                 Some(report)
             });
@@ -538,6 +655,9 @@ fn enqueue_openai_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<ProviderUs
             None,
         )
         .await;
+        report
+            .extra_info
+            .push(("Account label".into(), "default".into()));
         attach_activity(&mut report, "openai:oauth:default");
         Some(report)
     });

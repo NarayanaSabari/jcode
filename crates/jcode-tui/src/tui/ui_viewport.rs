@@ -79,6 +79,13 @@ const TAIL_CATCHUP_MAX_STEP: usize = 3;
 /// frame's resolved position by a bounded step so the new content slides into
 /// view. Disabled on tiers without decorative animations.
 fn resolve_tail_follow_scroll(max_scroll: usize, viewport_height: usize) -> usize {
+    // Resizing the terminal or usage footer changes geometry, not content.
+    // Keep the live tail anchored instead of animating an apparent insertion.
+    let previous_height = super::last_chat_viewport_height();
+    if previous_height > 0 && viewport_height != previous_height {
+        super::set_tail_catchup_active(false);
+        return max_scroll;
+    }
     if super::take_tail_follow_snap_request() {
         super::set_tail_catchup_active(false);
         return max_scroll;
@@ -1589,6 +1596,15 @@ mod tests {
             Some("\x1b[s\x1b_L;x\x1b\\\x1b[u\x1b[1C")
         );
         assert!(super::handterm_native_latex_cell_symbol("x\x1by", 1, 1).is_none());
+    }
+
+    #[test]
+    fn tail_follow_footer_resize_keeps_bottom_visible() {
+        crate::tui::ui::set_last_resolved_chat_scroll(100);
+        crate::tui::ui::set_last_chat_viewport_height(30);
+        assert_eq!(super::resolve_tail_follow_scroll(112, 18), 112);
+        assert!(!crate::tui::ui::tail_catchup_active());
+        crate::tui::ui::set_last_chat_viewport_height(0);
     }
 
     #[test]

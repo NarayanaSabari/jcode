@@ -3095,8 +3095,36 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let donut_height: u16 = idle_donut_reserved_height(show_donut, input_height);
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
     // Elastic overscroll status line revealed when the user scrolls past the
-    // bottom of the transcript. Rendered directly below the input line.
+    // bottom of the transcript. Rendered below the input footer.
     let overscroll_height: u16 = if app.chat_overscroll_active() { 1 } else { 0 };
+    let widget_data_start = Instant::now();
+    let widget_data = app.info_widget_data();
+    let widget_data_elapsed = widget_data_start.elapsed();
+    let mut footer_lines = super::usage_footer::footer_lines(&widget_data, chat_area.width);
+    // Reserve room for typing and the conversation even with many accounts.
+    let composer_reserved = input_height
+        + queued_height
+        + swarm_strip_height
+        + notification_height
+        + inline_block_height
+        + inline_ui_gap_height
+        + overscroll_height
+        + donut_height
+        + 9; // status plus an eight-row minimum transcript viewport
+    let footer_budget = chat_area
+        .height
+        .saturating_sub(composer_reserved)
+        .min(chat_area.height / 2) as usize;
+    if footer_budget == 0 {
+        footer_lines.clear();
+    } else if footer_lines.len() > footer_budget {
+        let hidden = footer_lines.len() - footer_budget + 1;
+        footer_lines.truncate(footer_budget.saturating_sub(1));
+        footer_lines.push(Line::from(format!(
+            "+{hidden} rows · /usage for all accounts"
+        )));
+    }
+    let footer_height = footer_lines.len() as u16;
     let fixed_height = 1
         + queued_height
         + swarm_strip_height
@@ -3104,6 +3132,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         + inline_block_height
         + inline_ui_gap_height
         + input_height
+        + footer_height
         + overscroll_height
         + donut_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll + donut
     let available_height = chat_area.height;
@@ -3228,8 +3257,9 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(inline_block_height), // 5 Inline UI
                 Constraint::Length(inline_ui_gap_height), // 6 Inline UI/input spacing
                 Constraint::Length(input_height),  // 7 Input
-                Constraint::Length(overscroll_height), // 8 Overscroll status line
-                Constraint::Length(donut_height),  // 9 Donut animation
+                Constraint::Length(footer_height), // 8 Context and account usage footer
+                Constraint::Length(overscroll_height), // 9 Overscroll status line
+                Constraint::Length(donut_height),  // 10 Donut animation
             ]
         } else {
             vec![
@@ -3241,8 +3271,9 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(inline_block_height),  // 5 Inline UI
                 Constraint::Length(inline_ui_gap_height), // 6 Inline UI/input spacing
                 Constraint::Length(input_height),         // 7 Input
-                Constraint::Length(overscroll_height),    // 8 Overscroll status line
-                Constraint::Length(donut_height),         // 9 Donut animation
+                Constraint::Length(footer_height),        // 8 Context and account usage footer
+                Constraint::Length(overscroll_height),    // 9 Overscroll status line
+                Constraint::Length(donut_height),         // 10 Donut animation
             ]
         })
         .split(chat_area);
@@ -3495,19 +3526,18 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         &mut debug_capture,
     );
 
+    frame.render_widget(Paragraph::new(footer_lines), chunks[8]);
+
     if overscroll_height > 0 {
-        input_ui::draw_overscroll_status(frame, app, chunks[8]);
+        input_ui::draw_overscroll_status(frame, app, chunks[9]);
     }
 
     if donut_height > 0 {
-        animations::draw_idle_animation(frame, app, chunks[9]);
+        animations::draw_idle_animation(frame, app, chunks[10]);
     }
     let chrome_elapsed = chrome_start.elapsed();
 
     // Draw info widget overlays (skip during idle animation - they look out of place)
-    let widget_data_start = Instant::now();
-    let widget_data = app.info_widget_data();
-    let widget_data_elapsed = widget_data_start.elapsed();
     let mut widget_render_ms: Option<f32> = None;
     let mut placements: Vec<info_widget::WidgetPlacement> = Vec::new();
     let widget_bounds = messages_area;
