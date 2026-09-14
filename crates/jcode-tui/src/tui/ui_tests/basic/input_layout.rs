@@ -629,7 +629,11 @@ fn activity_panel_reserves_transcript_space_and_preserves_composer_on_resize() {
             "{text}"
         );
         assert!(rows[height as usize - 1].contains("Claude"), "{text}");
-        assert_eq!(text.contains("FILE_SENTINEL.rs"), dock, "{text}");
+        assert!(
+            !text.contains("FILE_SENTINEL.rs"),
+            "Git file card must be absent: {text}"
+        );
+        assert!(rows[height as usize - 3].contains("⎇ main M1"), "{text}");
         assert_eq!(text.contains("TASK_SENTINEL"), dock, "{text}");
         assert_eq!(text.contains("BUILD_SENTINEL"), dock, "{text}");
         assert_eq!(
@@ -638,7 +642,7 @@ fn activity_panel_reserves_transcript_space_and_preserves_composer_on_resize() {
             "only footer should show model: {text}"
         );
         if dock {
-            for marker in ["TASK_SENTINEL", "BUILD_SENTINEL", "FILE_SENTINEL"] {
+            for marker in ["TASK_SENTINEL", "BUILD_SENTINEL"] {
                 let row = rows.iter().find(|row| row.contains(marker)).unwrap();
                 let column = row.find(marker).unwrap();
                 // ASCII widget contents follow the Unicode border, so count cells.
@@ -661,7 +665,6 @@ fn activity_panel_reserves_transcript_space_and_preserves_composer_on_resize() {
     state.input = "COMPOSER_SENTINEL".into();
     state.info_widget_data.todos.clear();
     state.info_widget_data.background_info = None;
-    state.info_widget_data.git_info = None;
     render_full(&state, 120, 40);
     assert_eq!(last_layout_snapshot().unwrap().messages_area.width, 120);
     info_widget::clear_widget_placements_for_tests();

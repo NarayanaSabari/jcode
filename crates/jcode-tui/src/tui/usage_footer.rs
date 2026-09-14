@@ -140,15 +140,46 @@ fn route_line(data: &InfoWidgetData, width: usize) -> Line<'static> {
     };
     let context = shorten(&context, width);
     let left = shorten(&route, width.saturating_sub(context.width() + 2));
-    let gap = width.saturating_sub(left.width() + context.width());
-    bound(
-        Line::from(vec![
-            colored(left, PURPLE),
-            Span::raw(" ".repeat(gap)),
-            colored(context, PURPLE),
-        ]),
-        width,
-    )
+    let git_width = width.saturating_sub(left.width() + context.width() + 4);
+    let git = data
+        .git_info
+        .as_ref()
+        .filter(|_| git_width >= 8)
+        .map(|info| {
+            let mut stats = Vec::new();
+            for (label, value) in [
+                ("M", info.modified),
+                ("S", info.staged),
+                ("?", info.untracked),
+                ("↑", info.ahead),
+                ("↓", info.behind),
+            ] {
+                if value > 0 {
+                    stats.push(format!("{label}{value}"));
+                }
+            }
+            let stats = if stats.is_empty() {
+                "✓".into()
+            } else {
+                stats.join(" ")
+            };
+            let branch = shorten(
+                &clean(&info.branch),
+                git_width.saturating_sub(stats.width() + 3).min(24),
+            );
+            shorten(&format!("⎇ {branch} {stats}"), git_width)
+        });
+    let mut spans = vec![colored(left, PURPLE)];
+    if let Some(git) = git {
+        spans.push(colored("  ", MUTED));
+        spans.push(colored(git, Color::Rgb(155, 195, 135)));
+    }
+    let used: usize = spans.iter().map(|span| span.content.width()).sum();
+    spans.push(Span::raw(
+        " ".repeat(width.saturating_sub(used + context.width())),
+    ));
+    spans.push(colored(context, PURPLE));
+    bound(Line::from(spans), width)
 }
 
 fn extra<'a>(report: &'a ProviderUsage, key: &str) -> Option<&'a str> {
@@ -360,6 +391,40 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn git_status_shares_route_row_without_wrapping() {
+        let mut data = InfoWidgetData {
+            model: Some("gpt-6-astra".into()),
+            reasoning_effort: Some("low".into()),
+            observed_context_tokens: Some(3100),
+            context_limit: Some(1_000_000),
+            git_info: Some(super::super::info_widget::GitInfo {
+                branch: "main".into(),
+                modified: 1,
+                staged: 2,
+                untracked: 3,
+                ahead: 4,
+                behind: 5,
+                dirty_files: vec!["file.rs".into()],
+            }),
+            ..Default::default()
+        };
+        let row = text(&route_line(&data, 120));
+        assert!(row.contains("⎇ main M1 S2 ?3 ↑4 ↓5"), "{row}");
+        assert!(row.contains("Astra · low · Standard"));
+        assert!(row.contains("Context 3.1k/1M"));
+        data.git_info.as_mut().unwrap().branch =
+            "界feature/very-long-branch-name\nbranch".repeat(4);
+        for width in [0, 1, 20, 40, 80, 120] {
+            let rows = render_footer(&data, &ProviderUsageSnapshot::default(), width);
+            assert_eq!(rows.len(), 3);
+            assert!(
+                rows.iter()
+                    .all(|row| row.width() <= width && !text(row).contains('\n'))
+            );
+        }
+    }
+
     #[test]
     fn unavailable_stale_and_low_quota_are_explicit() {
         let mut account = report("Anthropic", "a@example.com");

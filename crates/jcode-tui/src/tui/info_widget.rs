@@ -996,11 +996,10 @@ pub fn calculate_placements(
 }
 
 /// Activity widgets share a reserved right column, independent of transcript whitespace.
-const ACTIVITY_WIDGETS: [WidgetKind; 5] = [
+const ACTIVITY_WIDGETS: [WidgetKind; 4] = [
     WidgetKind::Todos,
     WidgetKind::SwarmStatus,
     WidgetKind::BackgroundTasks,
-    WidgetKind::GitStatus,
     WidgetKind::Diagrams,
 ];
 
