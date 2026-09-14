@@ -591,6 +591,9 @@ pub trait TuiState {
     }
     /// Render streaming text using incremental markdown renderer
     /// This is more efficient than re-rendering on every frame
+    fn thinking_hidden(&self) -> bool {
+        false
+    }
     fn render_streaming_markdown(&self, width: usize) -> Vec<Line<'static>>;
     /// Whether centered mode is enabled
     fn centered_mode(&self) -> bool;

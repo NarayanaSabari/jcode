@@ -1285,3 +1285,32 @@ fn test_prepare_messages_renders_anchored_reasoning_message_in_flow() {
         joined[reasoning_idx]
     );
 }
+
+#[test]
+fn thinking_visibility_round_trip_preserves_answers_and_captured_text() {
+    let _lock = viewport_snapshot_test_lock();
+    clear_test_render_state_for_tests();
+    let thought = jcode_tui_markdown::reasoning_line_markup("THOUGHT_SENTINEL");
+    let mut state = TestState {
+        display_messages: vec![
+            DisplayMessage::assistant(format!("{thought}\nANSWER_SENTINEL")),
+            DisplayMessage::reasoning(jcode_tui_markdown::reasoning_line_markup("LEGACY_SENTINEL")),
+        ],
+        streaming_text: format!("{}\nLIVE_ANSWER", jcode_tui_markdown::reasoning_partial_markup("LIVE_THOUGHT")),
+        status: ProcessingStatus::Streaming,
+        ..Default::default()
+    };
+    let original_message = state.display_messages[0].content.clone();
+    let original_stream = state.streaming_text.clone();
+    for hidden in [false, true, false] {
+        state.thinking_hidden = hidden;
+        let prepared = prepare::prepare_messages(&state, 100, 30);
+        let text = prepared.materialize_all_lines().iter().map(line_plain_text).collect::<Vec<_>>().join("\n");
+        for marker in ["THOUGHT_SENTINEL", "LEGACY_SENTINEL", "LIVE_THOUGHT"] {
+            assert_eq!(text.contains(marker), !hidden, "{text}");
+        }
+        assert!(text.contains("ANSWER_SENTINEL") && text.contains("LIVE_ANSWER"), "{text}");
+        assert_eq!(state.display_messages[0].content, original_message);
+        assert_eq!(state.streaming_text, original_stream);
+    }
+}

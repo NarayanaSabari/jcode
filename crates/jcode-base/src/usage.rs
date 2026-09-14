@@ -33,8 +33,9 @@ const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 /// OpenAI ChatGPT usage endpoint
 const OPENAI_USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 
-/// Cache duration (refresh every 5 minutes - usage data is slow-changing)
-const CACHE_DURATION: Duration = Duration::from_secs(300);
+/// Keep the raw account cache aligned with the report cache so an old
+/// percentage cannot be republished with a fresh report timestamp.
+const CACHE_DURATION: Duration = PROVIDER_USAGE_CACHE_TTL;
 
 /// Error backoff duration (wait 5 minutes before retrying after auth/credential errors)
 const ERROR_BACKOFF: Duration = Duration::from_secs(300);
@@ -43,7 +44,7 @@ const ERROR_BACKOFF: Duration = Duration::from_secs(300);
 const RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(900);
 
 /// Minimum interval between /usage command fetches (per provider).
-const PROVIDER_USAGE_CACHE_TTL: Duration = Duration::from_secs(120);
+const PROVIDER_USAGE_CACHE_TTL: Duration = Duration::from_secs(60);
 
 /// Cached provider usage reports (used by /usage command).
 /// Keyed by provider display name.
@@ -193,7 +194,7 @@ async fn fetch_anthropic_usage_data(access_token: String, cache_key: String) -> 
 
 /// Fetch usage from all connected providers with OAuth credentials.
 /// Returns a list of ProviderUsage, one per provider that has credentials.
-/// Results are cached for 2 minutes to avoid hitting rate limits.
+/// Results are cached for one minute to avoid hitting rate limits.
 pub async fn fetch_all_provider_usage() -> Vec<ProviderUsage> {
     fetch_all_provider_usage_progressive(|_| {}).await
 }
@@ -682,13 +683,8 @@ async fn sync_active_anthropic_usage_from_reports(results: &[ProviderUsage]) {
     match report {
         Some(report) => {
             let usage_data = usage_data_from_provider_report(report);
-            if let Ok(creds) = auth::claude::load_credentials() {
-                let cache_key = anthropic_usage_cache_key(
-                    &creds.access_token,
-                    auth::claude::active_account_label().as_deref(),
-                );
-                store_anthropic_usage(cache_key, usage_data.clone());
-            }
+            // The collector owns the per-account cache and its actual fetch time.
+            // Re-storing a derived report here would make old data fresh again.
             *cached = usage_data;
             if report.error.is_none() {
                 crate::provider::clear_provider_unavailable_for_account("claude");

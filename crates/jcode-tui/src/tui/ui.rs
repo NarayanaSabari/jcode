@@ -966,6 +966,7 @@ fn update_prompt_entry_animation(
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct BodyCacheKey {
+    thinking_hidden: bool,
     width: u16,
     diff_mode: crate::config::DiffDisplayMode,
     messages_version: u64,
@@ -1063,6 +1064,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.thinking_hidden == key.thinking_hidden
                     && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
@@ -1084,6 +1086,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.thinking_hidden == key.thinking_hidden
                     && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
@@ -1124,6 +1127,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.thinking_hidden == key.thinking_hidden
                     && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
@@ -1146,6 +1150,7 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    && entry.key.thinking_hidden == key.thinking_hidden
                     && entry.key.mermaid_aspect_bucket == key.mermaid_aspect_bucket
                     // Anchored inline images render inside the body, and a
                     // late-arriving image may target an already-prepared
@@ -1241,6 +1246,7 @@ fn body_cache() -> &'static Mutex<BodyCacheState> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct FullPrepCacheKey {
+    thinking_hidden: bool,
     width: u16,
     height: u16,
     diff_mode: crate::config::DiffDisplayMode,

@@ -11,11 +11,38 @@ const TEAL: Color = Color::Rgb(91, 211, 190);
 const ORANGE: Color = Color::Rgb(235, 164, 125);
 const MUTED: Color = Color::Rgb(157, 163, 175);
 
+// Scheduling observes the last painted snapshot, not just input activity.
+// Keep this predicate non-consuming: the run loop queries it more than once.
+static LAST_PAINT: std::sync::Mutex<Option<(std::time::Instant, bool)>> =
+    std::sync::Mutex::new(None);
+
+fn refresh_paint_due(age: std::time::Duration, refreshing: bool) -> bool {
+    age >= std::time::Duration::from_secs(if refreshing { 1 } else { 30 })
+}
+
+pub(super) fn needs_redraw() -> bool {
+    #[cfg(test)]
+    {
+        false
+    }
+    #[cfg(not(test))]
+    {
+        LAST_PAINT
+            .lock()
+            .ok()
+            .and_then(|last| *last)
+            .is_some_and(|(at, refreshing)| refresh_paint_due(at.elapsed(), refreshing))
+    }
+}
+
 pub(super) fn footer_lines(data: &InfoWidgetData, width: u16) -> Vec<Line<'static>> {
     #[cfg(test)]
     let snapshot = ProviderUsageSnapshot::default();
     #[cfg(not(test))]
     let snapshot = crate::usage::provider_usage_snapshot();
+    if let Ok(mut last) = LAST_PAINT.lock() {
+        *last = Some((std::time::Instant::now(), snapshot.refreshing));
+    }
     render_footer(data, &snapshot, width as usize)
 }
 
@@ -417,6 +444,15 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn idle_footer_refresh_schedule_keeps_usage_live() {
+        use std::time::Duration;
+        assert!(!refresh_paint_due(Duration::from_secs(29), false));
+        assert!(refresh_paint_due(Duration::from_secs(30), false));
+        assert!(!refresh_paint_due(Duration::from_millis(999), true));
+        assert!(refresh_paint_due(Duration::from_secs(1), true));
+    }
+
     #[test]
     fn claude_reset_times_follow_their_quotas_without_adding_rows() {
         let mut account = report("Anthropic", "madunicorn@proton.me");

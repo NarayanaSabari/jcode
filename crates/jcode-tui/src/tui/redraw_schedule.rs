@@ -577,6 +577,10 @@ pub(crate) fn periodic_redraw_required_excluding_idle_animation(state: &dyn TuiS
 }
 
 fn periodic_redraw_required_inner(state: &dyn TuiState, include_idle_animation: bool) -> bool {
+    if super::usage_footer::needs_redraw() {
+        record_full_frame_redraw_reason("usage_footer");
+        return true;
+    }
     let policy = crate::perf::tui_policy();
 
     let deep_idle = deep_idle_dormant(state);

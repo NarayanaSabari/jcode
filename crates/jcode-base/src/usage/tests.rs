@@ -833,3 +833,12 @@ fn anthropic_model_scoped_exhaustion_matches_display_name_to_catalog_id() {
     };
     assert!(!below_limit.model_scoped_exhausted("claude-fable-5"));
 }
+
+#[test]
+fn account_usage_cache_expires_before_report_can_refresh_old_data() {
+    let old = Instant::now() - Duration::from_secs(61);
+    let claude = UsageData { fetched_at: Some(old), ..Default::default() };
+    let openai = OpenAIUsageData { fetched_at: Some(old), ..Default::default() };
+    assert!(claude.is_stale());
+    assert!(openai.is_stale());
+}

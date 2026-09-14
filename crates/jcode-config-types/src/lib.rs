@@ -1005,6 +1005,8 @@ pub struct KeybindingsConfig {
     pub diff_mode_cycle: String,
     /// Toggle the info widget (default: "alt+i")
     pub info_widget_toggle: String,
+    /// Hide/reveal captured thinking without changing generation (default: alt+q).
+    pub thinking_toggle: String,
     /// Show/dismiss the session todo list as an inline card in the chat
     /// transcript (default: "alt+x")
     pub todo_card_toggle: String,
@@ -1060,6 +1062,7 @@ impl Default for KeybindingsConfig {
             typing_scroll_lock_toggle: get("typing_scroll_lock_toggle", "alt+s"),
             diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
             info_widget_toggle: get("info_widget_toggle", "alt+i"),
+            thinking_toggle: get("thinking_toggle", "alt+q"),
             todo_card_toggle: get("todo_card_toggle", "alt+x"),
             swarm_panel_focus: get("swarm_panel_focus", "alt+n"),
             new_terminal: get("new_terminal", ""),

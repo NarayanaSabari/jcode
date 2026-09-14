@@ -1,6 +1,7 @@
 #[test]
 fn test_body_cache_state_keeps_multiple_width_entries() {
     let key_a = BodyCacheKey {
+        thinking_hidden: false,
         width: 40,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 1,
@@ -14,6 +15,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         swarm_members_signature: 0,
     };
     let key_b = BodyCacheKey {
+        thinking_hidden: false,
         width: 41,
         ..key_a.clone()
     };
@@ -70,6 +72,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
 #[test]
 fn test_body_cache_state_does_not_reuse_a_different_mermaid_aspect_profile() {
     let key = BodyCacheKey {
+        thinking_hidden: false,
         width: 80,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 1,
@@ -83,6 +86,7 @@ fn test_body_cache_state_does_not_reuse_a_different_mermaid_aspect_profile() {
         swarm_members_signature: 0,
     };
     let resized_key = BodyCacheKey {
+        thinking_hidden: false,
         messages_version: 2,
         mermaid_aspect_bucket: Some(2500),
         ..key.clone()
@@ -102,6 +106,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
 
     for idx in 0..(BODY_CACHE_MAX_ENTRIES + 2) {
         let key = BodyCacheKey {
+            thinking_hidden: false,
             width: 40 + idx as u16,
             diff_mode: crate::config::DiffDisplayMode::Off,
             messages_version: 1,
@@ -143,6 +148,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
 #[test]
 fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
     let key = BodyCacheKey {
+        thinking_hidden: false,
         width: 120,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 99,
@@ -172,6 +178,7 @@ fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
 #[test]
 fn test_body_cache_state_retains_oversized_hot_entry() {
     let key = BodyCacheKey {
+        thinking_hidden: false,
         width: 140,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
@@ -202,6 +209,7 @@ fn test_body_cache_state_retains_oversized_hot_entry() {
 #[test]
 fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
     let key_a = BodyCacheKey {
+        thinking_hidden: false,
         width: 140,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
@@ -215,6 +223,7 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
         swarm_members_signature: 0,
     };
     let key_b = BodyCacheKey {
+        thinking_hidden: false,
         width: 139,
         ..key_a.clone()
     };
@@ -239,6 +248,7 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
 #[test]
 fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
     let key = BodyCacheKey {
+        thinking_hidden: false,
         width: 140,
         diff_mode: crate::config::DiffDisplayMode::Off,
         messages_version: 120,
@@ -261,6 +271,7 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
     let base = cache
         .best_incremental_base(
             &BodyCacheKey {
+                thinking_hidden: false,
                 messages_version: 121,
                 ..key.clone()
             },
@@ -475,6 +486,7 @@ fn test_prepare_body_incremental_applies_compaction_prompt_offset() {
 #[test]
 fn test_full_prep_cache_state_keeps_multiple_width_entries() {
     let key_a = FullPrepCacheKey {
+        thinking_hidden: false,
         width: 40,
         height: 20,
         diff_mode: crate::config::DiffDisplayMode::Off,
@@ -492,6 +504,7 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
     inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
+        thinking_hidden: false,
         width: 39,
         ..key_a.clone()
     };
@@ -548,6 +561,7 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
 #[test]
 fn test_full_prep_cache_state_does_not_reuse_a_different_mermaid_aspect_profile() {
     let key = FullPrepCacheKey {
+        thinking_hidden: false,
         width: 80,
         height: 30,
         diff_mode: crate::config::DiffDisplayMode::Off,
@@ -565,6 +579,7 @@ fn test_full_prep_cache_state_does_not_reuse_a_different_mermaid_aspect_profile(
         swarm_members_signature: 0,
     };
     let resized_key = FullPrepCacheKey {
+        thinking_hidden: false,
         mermaid_aspect_bucket: Some(2500),
         ..key.clone()
     };
@@ -582,6 +597,7 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
 
     for idx in 0..(FULL_PREP_CACHE_MAX_ENTRIES + 2) {
         let key = FullPrepCacheKey {
+            thinking_hidden: false,
             width: 40 + idx as u16,
             height: 20,
             diff_mode: crate::config::DiffDisplayMode::Off,
@@ -627,6 +643,7 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
 #[test]
 fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
     let key = FullPrepCacheKey {
+        thinking_hidden: false,
         width: 120,
         height: 40,
         diff_mode: crate::config::DiffDisplayMode::Off,
@@ -659,6 +676,7 @@ fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
 #[test]
 fn test_full_prep_cache_state_retains_oversized_hot_entry() {
     let key = FullPrepCacheKey {
+        thinking_hidden: false,
         width: 140,
         height: 42,
         diff_mode: crate::config::DiffDisplayMode::Off,
@@ -693,6 +711,7 @@ fn test_full_prep_cache_state_retains_oversized_hot_entry() {
 #[test]
 fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
     let key_a = FullPrepCacheKey {
+        thinking_hidden: false,
         width: 140,
         height: 42,
         diff_mode: crate::config::DiffDisplayMode::Off,
@@ -710,6 +729,7 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
     inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
+        thinking_hidden: false,
         width: 139,
         ..key_a.clone()
     };

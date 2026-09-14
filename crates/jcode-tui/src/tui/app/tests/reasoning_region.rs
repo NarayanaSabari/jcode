@@ -1050,3 +1050,20 @@ fn reasoning_streaming_state_space_never_panics_or_desyncs() {
         }
     }
 }
+
+#[test]
+fn thinking_shortcut_preserves_input_and_generation_settings() {
+    let mut app = create_test_app();
+    app.input = "keep my draft".into();
+    app.cursor_pos = 4;
+    let display = crate::config::config().display.clone();
+    assert!(app.toggle_keys.thinking.matches(KeyCode::Char('q'), KeyModifiers::ALT));
+    for hidden in [true, false] {
+        assert!(crate::tui::app::input::handle_pre_control_shortcuts(&mut app, KeyCode::Char('q'), KeyModifiers::ALT));
+        assert_eq!(app.thinking_hidden, hidden);
+        assert_eq!(app.input, "keep my draft");
+        assert_eq!(app.cursor_pos, 4);
+        assert_eq!(crate::config::config().display.reasoning_display(), display.reasoning_display());
+        assert_eq!(crate::config::config().display.show_thinking, display.show_thinking);
+    }
+}

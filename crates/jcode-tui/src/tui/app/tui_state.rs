@@ -589,6 +589,10 @@ impl crate::tui::TuiState for App {
         signature
     }
 
+    fn thinking_hidden(&self) -> bool {
+        self.thinking_hidden
+    }
+
     fn display_messages_version(&self) -> u64 {
         self.display_messages_version
     }

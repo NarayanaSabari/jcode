@@ -661,6 +661,7 @@ pub(super) fn prepare_messages(
     }
 
     let key = FullPrepCacheKey {
+        thinking_hidden: app.thinking_hidden(),
         width,
         height,
         diff_mode: app.diff_mode(),
@@ -1121,6 +1122,7 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
     super::note_body_request();
 
     let key = BodyCacheKey {
+        thinking_hidden: app.thinking_hidden(),
         width,
         diff_mode: app.diff_mode(),
         // Pinning changes which tool messages participate in the transcript.
@@ -1387,6 +1389,24 @@ fn render_message_into(
     let width = ctx.width;
     let centered = ctx.centered;
     let app = ctx.app;
+    let filtered;
+    let msg = if app.thinking_hidden() && matches!(msg.effective_role(), "assistant" | "reasoning")
+    {
+        if msg.effective_role() == "reasoning" {
+            return;
+        }
+        let content = crate::tui::App::thinking_display_text(&msg.content);
+        if content.is_empty() {
+            return;
+        }
+        filtered = DisplayMessage {
+            content,
+            ..msg.clone()
+        };
+        &filtered
+    } else {
+        msg
+    };
     let role = msg.effective_role();
     // The pinned band is the canonical todo presentation while enabled. Keep
     // todo tool messages in display_messages for history/session fidelity, but
@@ -2336,7 +2356,14 @@ fn prepare_streaming_cached(
     } else {
         display_width
     };
-    let mut md_lines = app.render_streaming_markdown(content_width);
+    let mut md_lines = if app.thinking_hidden() {
+        markdown::render_markdown_with_width(
+            &crate::tui::App::thinking_display_text(app.streaming_text()),
+            Some(content_width),
+        )
+    } else {
+        app.render_streaming_markdown(content_width)
+    };
     if centered {
         markdown::recenter_structured_blocks_for_display(&mut md_lines, display_width);
     }
@@ -2407,7 +2434,14 @@ pub(super) fn prepare_body(
         } else {
             display_width
         };
-        let mut md_lines = app.render_streaming_markdown(content_width);
+        let mut md_lines = if app.thinking_hidden() {
+            markdown::render_markdown_with_width(
+                &crate::tui::App::thinking_display_text(app.streaming_text()),
+                Some(content_width),
+            )
+        } else {
+            app.render_streaming_markdown(content_width)
+        };
         if centered {
             markdown::recenter_structured_blocks_for_display(&mut md_lines, display_width);
         }

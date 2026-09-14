@@ -110,6 +110,7 @@ fn native_scrollbar_visibility_requires_overflow() {
 
 #[derive(Clone, Default)]
 struct TestState {
+    thinking_hidden: bool,
     input: String,
     cursor_pos: usize,
     provider_name: Option<String>,
@@ -372,6 +373,9 @@ impl crate::tui::TuiState for TestState {
     }
     fn info_widget_data(&self) -> info_widget::InfoWidgetData {
         self.info_widget_data.clone()
+    }
+    fn thinking_hidden(&self) -> bool {
+        self.thinking_hidden
     }
     fn render_streaming_markdown(&self, _width: usize) -> Vec<Line<'static>> {
         markdown::render_markdown_with_width(&self.streaming_text, Some(_width))

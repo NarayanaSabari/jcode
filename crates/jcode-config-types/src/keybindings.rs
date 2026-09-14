@@ -297,6 +297,12 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
         other: PlatformDefault::unbound(KeybindingProvenance::Dev),
     },
     KeybindingDefault {
+        id: "thinking_toggle",
+        description: "Hide/reveal captured thinking",
+        macos: PlatformDefault::ai("alt+q"),
+        other: PlatformDefault::ai("alt+q"),
+    },
+    KeybindingDefault {
         id: "workspace_left",
         description: "Move to the workspace on the left",
         macos: PlatformDefault::dev("alt+h"),

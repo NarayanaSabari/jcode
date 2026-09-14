@@ -1446,6 +1446,7 @@ pub struct App {
     centered_toggle_keys: CenteredToggleKeys,
     // Configurable pane / mode toggle keybindings
     toggle_keys: super::keybind::ToggleKeys,
+    thinking_hidden: bool,
     // Keybindings for Niri-style workspace navigation
     workspace_navigation_keys: WorkspaceNavigationKeys,
     // Optional configured keybinding for external dictation

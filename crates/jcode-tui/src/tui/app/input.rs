@@ -1987,6 +1987,26 @@ pub(super) fn handle_alternate_enter(app: &mut App) {
     }
 }
 
+impl App {
+    pub(crate) fn thinking_display_text(content: &str) -> String {
+        // Preserve answer whitespace (including code blocks); only marked
+        // thinking lines are presentation metadata that may be omitted.
+        content
+            .split_inclusive('\n')
+            .filter(|line| !line.contains(jcode_tui_markdown::REASONING_SENTINEL))
+            .collect()
+    }
+
+    pub(super) fn toggle_thinking_visibility(&mut self) {
+        self.thinking_hidden = !self.thinking_hidden;
+        self.set_status_notice(if self.thinking_hidden {
+            "Thinking: hidden"
+        } else {
+            "Thinking: visible"
+        });
+    }
+}
+
 pub(super) fn handle_control_key(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('u') => {
@@ -2382,6 +2402,10 @@ pub(super) fn handle_pre_control_shortcuts(
     }
     if app.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
         app.toggle_typing_scroll_lock();
+        return true;
+    }
+    if app.toggle_keys.thinking.matches(code, modifiers) {
+        app.toggle_thinking_visibility();
         return true;
     }
     if app.toggle_keys.info_widget.matches(code, modifiers) {
@@ -2931,7 +2955,10 @@ fn paste_placeholder(content: &str) -> String {
 impl App {
     pub(super) fn handle_key_event(&mut self, event: crossterm::event::KeyEvent) {
         if self.remote_login.is_some() {
-            if matches!(event.kind, crossterm::event::KeyEventKind::Press | crossterm::event::KeyEventKind::Repeat) {
+            if matches!(
+                event.kind,
+                crossterm::event::KeyEventKind::Press | crossterm::event::KeyEventKind::Repeat
+            ) {
                 let _ = self.handle_key_press_event(event);
             }
             return;

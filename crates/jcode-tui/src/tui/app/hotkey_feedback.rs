@@ -116,6 +116,11 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
 
     // Configured pane/mode toggles (pre-control shortcuts).
     push(
+        inputs.toggles.thinking.binding().cloned(),
+        "thinking_toggle",
+        "hide/reveal thinking",
+    );
+    push(
         inputs.toggles.auto_poke.binding().cloned(),
         "auto_poke_toggle",
         "toggle auto-poke",
@@ -1133,6 +1138,7 @@ mod tests {
             ),
             ("diff_mode_cycle", toggles.diff_mode_cycle.binding()),
             ("info_widget_toggle", toggles.info_widget.binding()),
+            ("thinking_toggle", toggles.thinking.binding()),
             ("swarm_panel_focus", toggles.swarm_panel_focus.binding()),
         ];
         for (name, binding) in toggle_bindings {
