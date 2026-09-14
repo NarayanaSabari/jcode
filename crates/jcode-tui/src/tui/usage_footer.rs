@@ -283,6 +283,32 @@ fn account_line(snapshot: &ProviderUsageSnapshot, claude: bool, width: usize) ->
     } else {
         String::new()
     };
+    if claude && report.error.is_none() && !report.hard_limit_reached {
+        let resets: Vec<_> = details
+            .iter()
+            .enumerate()
+            .filter_map(|(index, span)| {
+                let session = span.content.starts_with("Session ");
+                if !session && !span.content.starts_with("Weekly ") {
+                    return None;
+                }
+                let reset = generic_limit(report, session)?.resets_at.as_deref()?;
+                let text = format!(" ↻ {}", clean(&crate::usage::format_reset_time(reset)));
+                Some((index + 1, colored(text, MUTED)))
+            })
+            .collect();
+        let timed_width: usize = details.iter().map(|s| s.content.width()).sum::<usize>()
+            + resets
+                .iter()
+                .map(|(_, span)| span.content.width())
+                .sum::<usize>();
+        // Keep both quotas readable and leave at least eight cells for identity.
+        if prefix.width() + timed_width + additional.width() + 10 <= width {
+            for (index, span) in resets.into_iter().rev() {
+                details.insert(index, span);
+            }
+        }
+    }
     let details_width: usize = details.iter().map(|s| s.content.width()).sum();
     let email_width = width.saturating_sub(prefix.width() + details_width + additional.width() + 2);
     let identity = extra(report, "Account email")
@@ -391,6 +417,37 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn claude_reset_times_follow_their_quotas_without_adding_rows() {
+        let mut account = report("Anthropic", "madunicorn@proton.me");
+        account.limits[0].resets_at = Some("2099-01-01T01:00:00Z".into());
+        account.limits[1].resets_at = Some("2099-01-04T01:00:00Z".into());
+        let session =
+            crate::usage::format_reset_time(account.limits[0].resets_at.as_deref().unwrap());
+        let weekly =
+            crate::usage::format_reset_time(account.limits[1].resets_at.as_deref().unwrap());
+        let snapshot = ProviderUsageSnapshot {
+            reports: vec![account],
+            ..Default::default()
+        };
+        let rows = render_footer(&InfoWidgetData::default(), &snapshot, 120);
+        assert_eq!(rows.len(), 3);
+        let claude = text(&rows[2]);
+        assert!(
+            claude.contains(&format!("Session 98% ↻ {session}")),
+            "{claude}"
+        );
+        assert!(
+            claude.contains(&format!("Weekly 66% ↻ {weekly}")),
+            "{claude}"
+        );
+        assert!(claude.contains("madunicorn@proton.me"));
+        let narrow = account_line(&snapshot, true, 50);
+        assert!(narrow.width() <= 50);
+        assert!(text(&narrow).contains("Session 98%"));
+        assert!(text(&narrow).contains("Weekly 66%"));
+    }
+
     #[test]
     fn git_status_shares_route_row_without_wrapping() {
         let mut data = InfoWidgetData {
