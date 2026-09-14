@@ -125,14 +125,10 @@ fn format_elapsed(seconds: u64) -> String {
 
 fn format_model(model: &str) -> String {
     let routed = model.rsplit([':', '/']).next().unwrap_or(model);
-    let model = routed
-        .strip_suffix("-sol")
-        .or_else(|| routed.strip_suffix("-luna"))
-        .unwrap_or(routed);
-    if let Some(rest) = model.strip_prefix("gpt-") {
+    if let Some(rest) = routed.strip_prefix("gpt-") {
         format!("GPT-{rest}")
     } else {
-        model.to_string()
+        routed.to_string()
     }
 }
 
@@ -307,8 +303,8 @@ pub fn render_gallery(
 /// tool progress, and animated glyphs. Those fields update frequently and make
 /// old chat rows move while the user is reading them. The dedicated live swarm
 /// page owns the detailed, animated representation instead. Spawn-time-stable
-/// metadata (model, provider/auth route) is shown since it answers "what is
-/// this agent running on" without churning.
+/// metadata (model, provider/auth route, effort) is shown since it answers
+/// "what is this agent running on" without churning.
 pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<Line<'static>> {
     if members.is_empty() || width < 8 {
         return Vec::new();
@@ -324,7 +320,7 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
         );
         let label = member.label.clone();
 
-        // Stable runtime metadata (model and provider/auth route) is fixed at
+        // Stable runtime metadata (model, provider/auth route, and effort) is fixed at
         // spawn time, so it can live on the transcript card without making old
         // chat rows churn. Drop trailing pieces first when width is tight.
         let mut metadata = vec![card_status_label(&member.status).to_string()];
@@ -338,6 +334,13 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
         if let Some(route) = format_route(member.provider.as_deref(), member.auth_method.as_deref())
         {
             metadata.push(route);
+        }
+        if let Some(effort) = member
+            .effort
+            .as_deref()
+            .filter(|effort| !effort.trim().is_empty())
+        {
+            metadata.push(effort.to_string());
         }
         let mut tail = format!(" · {}", metadata.join(" · "));
         while metadata.len() > 1 && disp_w(&lead) + disp_w(&label) + disp_w(&tail) > width {
@@ -939,6 +942,7 @@ pub fn render_swarm_strip_vertical(
     let mut out: Vec<Line<'static>> = Vec::new();
     // Where the selected agent's row landed in `out` (focused accordion).
     let mut selected_row_at: Option<usize> = None;
+    let mut selected_route_rows = 0usize;
     for (row, m) in ordered.iter().enumerate().skip(start).take(shown) {
         let first = out.is_empty();
         let is_sel = row == selected;
@@ -975,42 +979,90 @@ pub fn render_swarm_strip_vertical(
 
         // Expanded workers use the full-width information card header approved
         // for the inline swarm view. Compact rows retain the older chip layout.
-        if focused && is_sel && !m.todo_items.is_empty() {
+        if focused
+            && is_sel
+            && (!m.todo_items.is_empty()
+                || m.model.is_some()
+                || m.provider.is_some()
+                || m.auth_method.is_some()
+                || m.effort.is_some())
+        {
             let left = format!("{} ", m.label);
             spans.push(Span::styled(
                 left.clone(),
                 Style::default().fg(color).add_modifier(Modifier::BOLD),
             ));
 
-            let mut metadata = vec![format!(
+            let mut base_metadata = vec![format!(
                 "{} {}",
                 status_glyph(&m.status, spinner_frame),
                 card_status_label(&m.status)
             )];
             if let Some((done, total)) = m.todo {
-                metadata.push(format!("Todo {done}/{total}"));
+                base_metadata.push(format!("Todo {done}/{total}"));
             }
             if let Some(elapsed) = m.elapsed_secs {
-                metadata.push(format_elapsed(elapsed));
-            }
-            if let Some(model) = m.model.as_deref().filter(|model| !model.trim().is_empty()) {
-                metadata.push(format_model(model));
+                base_metadata.push(format_elapsed(elapsed));
             }
 
+            let mut route_metadata = Vec::new();
+            if let Some(model) = m.model.as_deref().filter(|model| !model.trim().is_empty()) {
+                route_metadata.push(format_model(model));
+            }
+            if let Some(route) = format_route(m.provider.as_deref(), m.auth_method.as_deref()) {
+                route_metadata.push(route);
+            }
+            if let Some(effort) = m
+                .effort
+                .as_deref()
+                .filter(|effort| !effort.trim().is_empty())
+            {
+                route_metadata.push(effort.to_string());
+            }
+
+            let consumed = lead_w + disp_w(&left);
+            let mut route_line = None;
+            if !route_metadata.is_empty() {
+                let mut full_metadata = base_metadata.clone();
+                full_metadata.extend(route_metadata.clone());
+                let full_tail = full_metadata.join(" · ");
+                if consumed + gap + disp_w(&full_tail) <= width {
+                    base_metadata = full_metadata;
+                } else {
+                    route_line = Some(route_metadata.join(" · "));
+                }
+            }
+
+            let mut metadata = base_metadata;
             let mut tail = metadata.join(" · ");
-            while metadata.len() > 1 && lead_w + disp_w(&left) + gap + disp_w(&tail) > width {
+            while metadata.len() > 1 && consumed + gap + disp_w(&tail) > width {
                 metadata.pop();
                 tail = metadata.join(" · ");
             }
-            let consumed = lead_w + disp_w(&left);
             if consumed + gap + disp_w(&tail) <= width {
                 spans.push(Span::raw(" ".repeat(width - consumed - disp_w(&tail))));
                 spans.push(Span::styled(tail, Style::default().fg(rgb(150, 150, 160))));
             }
+            let row_at = out.len();
             if is_sel {
-                selected_row_at = Some(out.len());
+                selected_row_at = Some(row_at);
             }
             out.push(Line::from(spans));
+            if let Some(route_text) = route_line {
+                let route_prefix = format!("{INDENT}│   ↳ ");
+                let route_budget = width.saturating_sub(disp_w(&route_prefix));
+                out.push(Line::from(vec![
+                    Span::raw(format!("{INDENT}│   ")),
+                    Span::styled("↳ ", Style::default().fg(rgb(110, 130, 170))),
+                    Span::styled(
+                        truncate_label(&route_text, route_budget),
+                        Style::default().fg(rgb(150, 150, 160)),
+                    ),
+                ]));
+                if is_sel {
+                    selected_route_rows = 1;
+                }
+            }
             continue;
         }
 
@@ -1114,7 +1166,7 @@ pub fn render_swarm_strip_vertical(
             // place (accordion) instead of jumping to a detached pane below.
             let detail = hovered_detail_body(m, Some(spinner_frame), width, detail_budget, true);
             for (i, line) in detail.into_iter().enumerate() {
-                out.insert(at + 1 + i, line);
+                out.insert(at + 1 + selected_route_rows + i, line);
             }
         }
         if focused && !hints.is_empty() {
@@ -1604,6 +1656,26 @@ fn hovered_detail_body(
 
     let mut out: Vec<Line<'static>> = Vec::new();
 
+    // Routing warnings are injected into the body by the TUI adapter. Keep
+    // them visible even when the member has todos, since the todo renderer
+    // otherwise returns before reading body lines.
+    if let Some(warning) = m.body.iter().find(|line| is_routing_warning(line)) {
+        let rail = if show_member_rail { BAR } else { "    " };
+        let text_budget = width.saturating_sub(GUTTER.len() + rail.len() + 2);
+        out.push(Line::from(vec![
+            Span::raw(GUTTER),
+            Span::styled(rail, Style::default().fg(gutter_fg)),
+            Span::styled("⚠ ", Style::default().fg(rgb(255, 170, 80))),
+            Span::styled(
+                truncate_label(warning.trim(), text_budget),
+                Style::default().fg(rgb(255, 190, 110)),
+            ),
+        ]));
+        if out.len() >= budget {
+            return out;
+        }
+    }
+
     // ---- Todo card ----
     // Show a sliding window of four item names. Tool activity belongs to the
     // active item and is nested immediately below it, newest at the bottom.
@@ -1728,7 +1800,7 @@ fn hovered_detail_body(
         .body
         .iter()
         .map(|l| l.as_str())
-        .filter(|l| !l.trim_start().starts_with('·'))
+        .filter(|l| !l.trim_start().starts_with('·') && !is_routing_warning(l))
         .collect();
     let text_budget = width.saturating_sub(GUTTER.len() + BAR.len());
     let shown: Vec<&str> = transcript
@@ -1767,6 +1839,14 @@ fn hovered_detail_body(
 
     out
 }
+
+fn is_routing_warning(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("Route changed:")
+        || line.starts_with("Effort fallback:")
+        || line.starts_with("Effort request rejected:")
+}
+
 fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
     let mut spans = vec![
         Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
@@ -2303,6 +2383,36 @@ mod tests {
     }
 
     #[test]
+    fn vertical_strip_focused_shows_full_worker_routing_at_narrow_width() {
+        let mut worker = member("long-worker-label", "running", None, &[]);
+        worker.todo = Some((0, 9));
+        worker.elapsed_secs = Some(18);
+        worker.model = Some("openai:gpt-5.6-sol".into());
+        worker.provider = Some("OpenAI".into());
+        worker.auth_method = Some("OAuth".into());
+        worker.effort = Some("high".into());
+        worker.todo_items = vec![GalleryTodo {
+            content: "inspect effective route".into(),
+            status: "pending".into(),
+            tool_intents: Vec::new(),
+        }];
+
+        let lines = render_swarm_strip_vertical(&[worker], 0, true, &hints(), None, 0, 80, 4, 12);
+        let text = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert!(text.contains("GPT-5.6-sol"), "model missing: {text}");
+        assert!(
+            text.contains("OpenAI OAuth"),
+            "provider route missing: {text}"
+        );
+        assert!(text.contains("high"), "effort missing: {text}");
+        assert!(
+            text.contains("↳ GPT-5.6-sol · OpenAI OAuth · high"),
+            "compact route line missing: {text}"
+        );
+        assert!(lines.iter().all(|line| line.width() <= 80));
+    }
+
+    #[test]
     fn chat_card_is_stable_while_live_card_shows_details() {
         let mut worker = member("reviewer", "running", None, &[]);
         worker.icon = Some("🦕".to_string());
@@ -2369,7 +2479,7 @@ mod tests {
             "assigned agent emoji missing: {all}"
         );
         assert!(
-            all.contains("reviewer · Working · GPT-5.6 · OpenAI OAuth"),
+            all.contains("reviewer · Working · GPT-5.6-sol · OpenAI OAuth · high"),
             "stable status/model/route metadata missing: {all}"
         );
         assert!(
@@ -2393,7 +2503,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
-            live.contains("reviewer · 00:18 · GPT-5.6 · OpenAI OAuth · high"),
+            live.contains("reviewer · 00:18 · GPT-5.6-sol · OpenAI OAuth · high"),
             "live header metadata missing: {live}"
         );
         assert!(
@@ -2427,7 +2537,10 @@ mod tests {
         // Wide: everything fits. Narrow: route drops before model, model before
         // status, and the label always survives.
         let wide = plain_line(&render_swarm_chat_cards(std::slice::from_ref(&worker), 100)[0]);
-        assert!(wide.contains("Working · GPT-5.6 · OpenAI OAuth"), "{wide}");
+        assert!(
+            wide.contains("Working · GPT-5.6-sol · OpenAI OAuth"),
+            "{wide}"
+        );
         let mid = plain_line(&render_swarm_chat_cards(std::slice::from_ref(&worker), 34)[0]);
         assert!(
             mid.contains("Working") && !mid.contains("OpenAI OAuth"),
@@ -2438,6 +2551,76 @@ mod tests {
         bare.icon = Some("🦕".to_string());
         let bare_line = plain_line(&render_swarm_chat_cards(std::slice::from_ref(&bare), 100)[0]);
         assert_eq!(bare_line.trim(), "🦕 ● plain · Working");
+    }
+
+    #[test]
+    fn chat_cards_distinguish_same_base_models_and_show_effort() {
+        let mut sol = member("sol-worker", "running", None, &[]);
+        sol.model = Some("openai:gpt-5.6-sol".into());
+        sol.provider = Some("OpenAI".into());
+        sol.auth_method = Some("OAuth".into());
+        sol.effort = Some("high".into());
+
+        let mut luna = member("luna-worker", "running", None, &[]);
+        luna.model = Some("openai:gpt-5.6-luna".into());
+        luna.provider = Some("OpenAI".into());
+        luna.auth_method = Some("OAuth".into());
+        luna.effort = Some("max".into());
+
+        let cards = render_swarm_chat_cards(&[sol, luna], 140);
+        let text = cards.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert!(
+            text.contains("sol-worker · Working · GPT-5.6-sol · OpenAI OAuth · high"),
+            "Sol routing missing: {text}"
+        );
+        assert!(
+            text.contains("luna-worker · Working · GPT-5.6-luna · OpenAI OAuth · max"),
+            "Luna routing missing: {text}"
+        );
+        assert!(cards.iter().all(|line| line.width() <= 140));
+    }
+
+    #[test]
+    fn live_card_shows_routing_warning_before_todos() {
+        let mut worker = member(
+            "worker",
+            "running",
+            None,
+            &["Route changed: openai:gpt-5.6-sol -> openai:gpt-5.6-luna"],
+        );
+        worker.todo_items = vec![GalleryTodo {
+            content: "inspect effective route".into(),
+            status: "pending".into(),
+            tool_intents: Vec::new(),
+        }];
+
+        let lines = render_swarm_live_card(&worker, 0, 120, 8);
+        let text = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert!(
+            text.contains("⚠ Route changed: openai:gpt-5.6-sol -> openai:gpt-5.6-luna"),
+            "routing warning missing: {text}"
+        );
+        assert!(
+            text.contains("inspect effective route"),
+            "todo content missing: {text}"
+        );
+    }
+
+    #[test]
+    fn live_card_shows_effort_rejection_warning() {
+        let worker = member(
+            "worker",
+            "running",
+            None,
+            &["Effort request rejected: provider supports low only"],
+        );
+
+        let lines = render_swarm_live_card(&worker, 0, 80, 6);
+        let text = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert!(
+            text.contains("⚠ Effort request rejected: provider supports low only"),
+            "effort warning missing: {text}"
+        );
     }
 
     #[test]

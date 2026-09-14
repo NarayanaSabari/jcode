@@ -82,7 +82,13 @@ pub(crate) fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMe
             status: member.status.clone(),
             task: member.task_label.clone(),
             role: member.role.clone(),
-            body: member_body(member),
+            body: {
+                let mut body = member_body(member);
+                if let Some(warning) = &member.runtime.routing_warning {
+                    body.insert(0, warning.clone());
+                }
+                body
+            },
             sort_key: member.session_id.clone(),
             todo: member.todo_progress,
             model: member.runtime.model.clone(),

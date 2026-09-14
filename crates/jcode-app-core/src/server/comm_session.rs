@@ -745,6 +745,9 @@ pub(super) async fn spawn_swarm_agent(
         )
         .await;
     }
+    if let Some(member) = swarm_members.write().await.get_mut(&new_session_id) {
+        member.runtime.requested_effort = spawn_effort.clone();
+    }
     // Label the worker with what it was spawned for so the swarm strip and
     // member lists can show the task, not just the animal name. An explicit
     // spawn `label` wins; otherwise the label is derived from the raw prompt

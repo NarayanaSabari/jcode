@@ -146,12 +146,14 @@ pub(super) async fn create_headless_session(
         }
     }
 
+    let mut effort_error = None;
     if let Some(effort) = effort_override
         .as_deref()
         .map(str::trim)
         .filter(|effort| !effort.is_empty())
         && let Err(e) = new_agent.set_reasoning_effort(effort)
     {
+        effort_error = Some(e.to_string());
         crate::logging::warn(&format!(
             "Failed to set headless session reasoning effort override '{}': {}",
             effort, e
@@ -205,9 +207,24 @@ pub(super) async fn create_headless_session(
             agent_guard.provider_model(),
             agent_guard.provider_name(),
             auth_method,
-            crate::session_effort::session_effort(&client_session_id),
+            agent_guard.provider_reasoning_effort(),
         )
     };
+
+    let routing_warning = effort_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|requested| !requested.is_empty() && effort.as_deref() != Some(*requested))
+        .map(|requested| {
+            format!(
+                "Effort fallback: requested {requested}, effective {}{}",
+                effort.as_deref().unwrap_or("not reported"),
+                effort_error
+                    .as_deref()
+                    .map(|reason| format!(" ({reason})"))
+                    .unwrap_or_default()
+            )
+        });
 
     let swarm_id = if swarm_enabled {
         // A spawned worker belongs to its parent's swarm. A standalone
@@ -261,6 +278,8 @@ pub(super) async fn create_headless_session(
                 todo_progress: None,
                 todo_items: Vec::new(),
                 runtime: crate::protocol::SwarmMemberRuntime {
+                    requested_effort: effort_override.clone(),
+                    routing_warning,
                     model: Some(provider_model),
                     provider: Some(provider_name),
                     auth_method,

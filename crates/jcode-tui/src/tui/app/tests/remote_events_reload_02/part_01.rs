@@ -792,6 +792,8 @@ fn test_swarm_completion_notification_inserts_agent_snapshot_without_report_pros
         todo_progress: Some((3, 3)),
         todo_items: Vec::new(),
         runtime: crate::protocol::SwarmMemberRuntime {
+            requested_effort: None,
+            routing_warning: None,
             model: Some("openai:gpt-5.6-sol".to_string()),
             provider: Some("OpenAI".to_string()),
             auth_method: Some("OAuth".to_string()),
@@ -840,7 +842,7 @@ fn test_swarm_completion_notification_inserts_agent_snapshot_without_report_pros
             .join("\n");
     assert_eq!(
         rendered.trim(),
-        "🐄 ✓ card demo · Completed · GPT-5.6 · OpenAI OAuth",
+        "🐄 ✓ card demo · Completed · GPT-5.6-sol · OpenAI OAuth · high",
         "completed transcript snapshots should stay stable and one-line"
     );
     assert!(!rendered.contains("README first heading"));

@@ -421,6 +421,40 @@ pub(super) async fn dispatch_swarm_tool_activity(
     }
 }
 
+fn update_worker_route(
+    runtime: &mut crate::protocol::SwarmMemberRuntime,
+    event: &crate::bus::SubagentStatus,
+    model: &str,
+) -> bool {
+    let previous_runtime = runtime.clone();
+    if let Some(previous) = runtime.model.as_ref()
+        && (previous != model
+            || runtime.provider != event.provider
+            || (runtime.auth_method.is_some() && runtime.auth_method != event.auth_method))
+    {
+        runtime.routing_warning = Some(format!(
+            "Route changed: {previous} -> {model} ({} {} -> {} {})",
+            runtime.provider.as_deref().unwrap_or("unknown provider"),
+            runtime.auth_method.as_deref().unwrap_or("unknown auth"),
+            event.provider.as_deref().unwrap_or("unknown provider"),
+            event.auth_method.as_deref().unwrap_or("unknown auth")
+        ));
+    }
+    if let Some(requested) = runtime.requested_effort.as_deref()
+        && event.effort.as_deref() != Some(requested)
+    {
+        runtime.routing_warning = Some(format!(
+            "Effort fallback: requested {requested}, effective {}",
+            event.effort.as_deref().unwrap_or("not reported")
+        ));
+    }
+    runtime.model = Some(model.to_string());
+    runtime.provider = event.provider.clone();
+    runtime.effort = event.effort.clone();
+    runtime.auth_method = event.auth_method.clone();
+    *runtime != previous_runtime
+}
+
 pub(super) async fn dispatch_swarm_runtime_status(
     event: &crate::bus::SubagentStatus,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
@@ -438,10 +472,9 @@ pub(super) async fn dispatch_swarm_runtime_status(
         let Some(member) = members.get_mut(&event.session_id) else {
             return;
         };
-        if member.runtime.model.as_ref() == Some(model) {
+        if !update_worker_route(&mut member.runtime, event, model) {
             return;
         }
-        member.runtime.model = Some(model.clone());
         member.swarm_id.clone()
     };
     if let Some(swarm_id) = swarm_id {
@@ -587,6 +620,76 @@ fn cap_chars(s: &str, cap: usize) -> String {
 mod tests {
     use super::*;
     use crate::bus::{BatchProgress, ToolEvent, ToolStatus};
+
+    #[test]
+    fn worker_route_updates_effort_even_when_model_is_unchanged() {
+        let mut runtime = crate::protocol::SwarmMemberRuntime {
+            model: Some("gpt-5.6-luna".into()),
+            provider: Some("OpenAI".into()),
+            effort: Some("low".into()),
+            ..Default::default()
+        };
+        let mut event = crate::bus::SubagentStatus {
+            session_id: "worker".into(),
+            status: "calling API".into(),
+            model: Some("gpt-5.6-luna".into()),
+            provider: Some("OpenAI".into()),
+            effort: Some("max".into()),
+            auth_method: Some("OAuth".into()),
+        };
+        assert!(update_worker_route(&mut runtime, &event, "gpt-5.6-luna"));
+        assert_eq!(runtime.effort.as_deref(), Some("max"));
+        assert_eq!(runtime.auth_method.as_deref(), Some("OAuth"));
+        assert!(!update_worker_route(&mut runtime, &event, "gpt-5.6-luna"));
+        event.provider = Some("Claude".into());
+        event.effort = None;
+        assert!(update_worker_route(
+            &mut runtime,
+            &event,
+            "claude-sonnet-4-6"
+        ));
+        assert_eq!(runtime.provider.as_deref(), Some("Claude"));
+        assert_eq!(runtime.effort, None);
+        assert!(
+            runtime
+                .routing_warning
+                .unwrap()
+                .contains("gpt-5.6-luna -> claude-sonnet-4-6")
+        );
+    }
+
+    #[test]
+    fn worker_route_reports_auth_only_change_and_visible_effort_fallback() {
+        let mut runtime = crate::protocol::SwarmMemberRuntime {
+            model: Some("gpt-6-astra".into()),
+            provider: Some("OpenAI".into()),
+            auth_method: Some("OAuth".into()),
+            effort: Some("low".into()),
+            ..Default::default()
+        };
+        let event = crate::bus::SubagentStatus {
+            session_id: "worker".into(),
+            status: "calling API".into(),
+            model: Some("gpt-6-astra".into()),
+            provider: Some("OpenAI".into()),
+            auth_method: Some("API key".into()),
+            effort: Some("low".into()),
+        };
+        assert!(update_worker_route(&mut runtime, &event, "gpt-6-astra"));
+        assert!(
+            runtime
+                .routing_warning
+                .as_deref()
+                .unwrap()
+                .contains("OAuth -> OpenAI API key")
+        );
+        runtime.requested_effort = Some("invalid".into());
+        assert!(update_worker_route(&mut runtime, &event, "gpt-6-astra"));
+        assert_eq!(
+            runtime.routing_warning.as_deref(),
+            Some("Effort fallback: requested invalid, effective low")
+        );
+    }
 
     fn tool(id: &str, intent: &str, status: ToolStatus) -> ToolEvent {
         ToolEvent {

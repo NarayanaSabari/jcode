@@ -64,8 +64,11 @@ pub(super) async fn maybe_handle_swarm_read_command(
                 "live_attachments": member.event_txs.len(),
                 "joined_secs_ago": member.joined_at.elapsed().as_secs(),
                 "status_changed_secs_ago": member.last_status_change.elapsed().as_secs(),
-                "provider": provider,
-                "model": model,
+                "provider": provider.or_else(|| member.runtime.provider.clone()),
+                "model": model.or_else(|| member.runtime.model.clone()),
+                "effort": member.runtime.effort,
+                "auth_method": member.runtime.auth_method,
+                "routing_warning": member.runtime.routing_warning,
                 "server_name": server_identity.name,
                 "server_icon": server_identity.icon,
             }));

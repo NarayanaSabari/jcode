@@ -474,10 +474,19 @@ impl App {
                             })
                             .collect(),
                         runtime: crate::protocol::SwarmMemberRuntime {
-                            model: Some("gpt-5.6".into()),
+                            requested_effort: None,
+                            routing_warning: None,
+                            model: Some(
+                                if i % 2 == 0 {
+                                    "gpt-5.6-sol"
+                                } else {
+                                    "gpt-5.6-luna"
+                                }
+                                .into(),
+                            ),
                             provider: Some("OpenAI".into()),
                             auth_method: Some("OAuth".into()),
-                            effort: Some("high".into()),
+                            effort: Some(if i % 2 == 0 { "high" } else { "max" }.into()),
                             elapsed_secs: Some(18),
                         },
                     })

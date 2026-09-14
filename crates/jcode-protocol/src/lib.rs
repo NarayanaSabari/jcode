@@ -490,6 +490,11 @@ pub struct SwarmMemberStatus {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SwarmMemberRuntime {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_effort: Option<String>,
+    /// Visible explanation when the requested route could not be honored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_warning: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
@@ -504,7 +509,9 @@ pub struct SwarmMemberRuntime {
 
 impl SwarmMemberRuntime {
     fn is_empty(&self) -> bool {
-        self.model.is_none()
+        self.requested_effort.is_none()
+            && self.routing_warning.is_none()
+            && self.model.is_none()
             && self.provider.is_none()
             && self.auth_method.is_none()
             && self.effort.is_none()
