@@ -3041,7 +3041,18 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let widget_data_start = Instant::now();
     let widget_data = app.info_widget_data();
     let widget_data_elapsed = widget_data_start.elapsed();
+    // Reserve the maximum footer before preparing message wraps. Crowded
+    // composers must not narrow the transcript for a column that cannot paint.
+    let activity_chrome_height = input_height
+        + queued_height
+        + swarm_strip_height
+        + inline_block_height
+        + inline_ui_gap_height
+        + u16::from(app.has_notification())
+        + u16::from(app.chat_overscroll_active())
+        + 4; // status plus three footer rows
     let activity_width = if app.info_widget_overlays_enabled()
+        && chat_area.height.saturating_sub(activity_chrome_height) >= 4
         && !swarm_page_active
         && !app.onboarding_welcome_active()
         && !super::idle_donut_active(app)
@@ -3569,7 +3580,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         );
     }
 
-    let input_cursor = input_ui::draw_input(
+    input_ui::draw_input(
         frame,
         app,
         input_area,
@@ -3667,18 +3678,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     if visual_debug::overlay_enabled() {
         overlays::draw_debug_overlay(frame, &placements, &chunks);
-    }
-
-    // Very short terminals may have no room for the custom usage footer.
-    if footer_height == 0 {
-        input_ui::draw_right_fact_stack(
-            frame,
-            app,
-            messages_area,
-            chunks[7],
-            chat_scrollbar_visible,
-            input_cursor,
-        );
     }
 
     // Command-suggestion popover: a late overlay pass so the palette floats

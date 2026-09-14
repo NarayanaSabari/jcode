@@ -647,6 +647,18 @@ fn activity_panel_reserves_transcript_space_and_preserves_composer_on_resize() {
             }
         }
     }
+    state.input = (0..10).map(|_| "LONG_INPUT").collect::<Vec<_>>().join("\n");
+    let crowded = buffer_to_text(&render_full(&state, 120, 18));
+    assert_eq!(
+        last_layout_snapshot().unwrap().messages_area.width,
+        120,
+        "{crowded}"
+    );
+    assert!(
+        !crowded.contains("Astra"),
+        "crowded view must not restore floating facts: {crowded}"
+    );
+    state.input = "COMPOSER_SENTINEL".into();
     state.info_widget_data.todos.clear();
     state.info_widget_data.background_info = None;
     state.info_widget_data.git_info = None;

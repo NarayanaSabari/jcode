@@ -1863,6 +1863,12 @@ fn activity_panel_stacks_only_activity_and_skips_pinned_diagrams() {
         assert!(pair[0].rect.bottom() < pair[1].rect.y);
     }
     assert_eq!(placements.last().unwrap().rect.bottom(), area.bottom());
+    let short = super::calculate_activity_placements(Rect::new(84, 0, 36, 17), &data, true);
+    assert!(
+        short
+            .iter()
+            .any(|p| p.kind == WidgetKind::Diagrams && p.rect.height >= 6)
+    );
     let unpinned = super::calculate_activity_placements(area, &data, false);
     assert!(!unpinned.iter().any(|p| p.kind == WidgetKind::Diagrams));
     for height in 0..18 {

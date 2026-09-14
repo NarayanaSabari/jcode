@@ -1039,6 +1039,14 @@ pub(crate) fn calculate_activity_placements(
                 break;
             }
             let height = calculate_widget_height(kind, data, area.width, remaining);
+            // Keep a usable diagram preview when lower cards would crowd it out.
+            if kind != WidgetKind::Diagrams
+                && diagrams
+                && data.has_data_for(WidgetKind::Diagrams)
+                && remaining < height.saturating_add(7)
+            {
+                continue;
+            }
             if height > 2 {
                 placements.push(WidgetPlacement {
                     kind,
