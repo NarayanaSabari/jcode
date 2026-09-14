@@ -350,7 +350,12 @@ mod footer_cache_tests {
             },
         );
         assert_eq!(results.len(), 2);
-        assert!(results[1].error.is_some());
+        assert!(
+            results
+                .iter()
+                .any(|report| report.provider_name == "Anthropic connected"
+                    && report.error.is_some())
+        );
     }
 }
 
