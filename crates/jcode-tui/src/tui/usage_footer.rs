@@ -162,9 +162,9 @@ fn generic_limit(report: &ProviderUsage, session: bool) -> Option<&UsageLimit> {
     report.limits.iter().find(|limit| {
         let name = limit.name.to_ascii_lowercase();
         let names: &[&str] = if session {
-            &["5-hour window", "5-hour", "5h", "session"]
+            &["5-hour window", "5-hour", "5h", "session", "codex 5h"]
         } else {
-            &["7-day window", "7-day", "7d", "weekly"]
+            &["7-day window", "7-day", "7d", "weekly", "codex 1w"]
         };
         names.contains(&name.as_str())
     })
@@ -331,6 +331,20 @@ mod tests {
         assert_eq!(rows[1].spans[0].style.fg, colored("", TEAL).style.fg);
         assert_eq!(rows[2].spans[0].style.fg, colored("", ORANGE).style.fg);
     }
+    #[test]
+    fn nested_codex_weekly_quota_is_recognized() {
+        let mut account = report("OpenAI", "a@example.com");
+        account.limits[1].name = "Codex 1w".into();
+        let snapshot = ProviderUsageSnapshot {
+            reports: vec![account],
+            ..Default::default()
+        };
+        assert!(
+            text(&render_footer(&InfoWidgetData::default(), &snapshot, 100)[1])
+                .contains("Weekly 66%")
+        );
+    }
+
     #[test]
     fn rows_never_wrap_even_with_unicode_and_narrow_widths() {
         let snapshot = ProviderUsageSnapshot {
