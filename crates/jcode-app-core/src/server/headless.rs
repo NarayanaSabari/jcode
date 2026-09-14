@@ -217,7 +217,12 @@ pub(super) async fn create_headless_session(
         .filter(|requested| !requested.is_empty() && effort.as_deref() != Some(*requested))
         .map(|requested| {
             format!(
-                "Effort fallback: requested {requested}, effective {}{}",
+                "{}: requested {requested}, effective {}{}",
+                if effort_error.is_some() {
+                    "Effort fallback"
+                } else {
+                    "Effort differs"
+                },
                 effort.as_deref().unwrap_or("not reported"),
                 effort_error
                     .as_deref()

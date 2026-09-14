@@ -444,7 +444,16 @@ fn update_worker_route(
         && event.effort.as_deref() != Some(requested)
     {
         runtime.routing_warning = Some(format!(
-            "Effort fallback: requested {requested}, effective {}",
+            "{}: requested {requested}, effective {}",
+            if runtime
+                .routing_warning
+                .as_deref()
+                .is_some_and(|warning| warning.starts_with("Effort fallback:"))
+            {
+                "Effort fallback"
+            } else {
+                "Effort differs"
+            },
             event.effort.as_deref().unwrap_or("not reported")
         ));
     }
@@ -687,8 +696,30 @@ mod tests {
         assert!(update_worker_route(&mut runtime, &event, "gpt-6-astra"));
         assert_eq!(
             runtime.routing_warning.as_deref(),
-            Some("Effort fallback: requested invalid, effective low")
+            Some("Effort differs: requested invalid, effective low")
         );
+    }
+
+    #[test]
+    fn normalized_effort_alias_is_a_difference_not_a_failed_request() {
+        let mut runtime = crate::protocol::SwarmMemberRuntime {
+            requested_effort: Some("max".into()),
+            ..Default::default()
+        };
+        let event = crate::bus::SubagentStatus {
+            session_id: "worker".into(),
+            status: "calling API".into(),
+            model: Some("model".into()),
+            provider: Some("OpenRouter".into()),
+            auth_method: Some("API key".into()),
+            effort: Some("xhigh".into()),
+        };
+        assert!(update_worker_route(&mut runtime, &event, "model"));
+        assert_eq!(
+            runtime.routing_warning.as_deref(),
+            Some("Effort differs: requested max, effective xhigh")
+        );
+        assert!(!update_worker_route(&mut runtime, &event, "model"));
     }
 
     fn tool(id: &str, intent: &str, status: ToolStatus) -> ToolEvent {

@@ -1842,7 +1842,8 @@ fn hovered_detail_body(
 
 fn is_routing_warning(line: &str) -> bool {
     let line = line.trim_start();
-    line.starts_with("Route changed:")
+    line.starts_with("Effort differs:")
+        || line.starts_with("Route changed:")
         || line.starts_with("Effort fallback:")
         || line.starts_with("Effort request rejected:")
 }
