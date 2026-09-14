@@ -3033,7 +3033,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let hint_line_height = input_ui::input_hint_line_height(app);
     let inline_block_height: u16 = inline_ui_height(app);
     let inline_ui_gap_height: u16 = 1; // divider above the composer
-    let input_height = base_input_height + hint_line_height;
+    let input_height = base_input_height + hint_line_height + 1; // lower divider
 
     if let Some(ref mut capture) = debug_capture {
         capture.render_order.push("prepare_messages".to_string());
@@ -3527,10 +3527,29 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         chunks[6],
     );
 
+    let input_area = Rect {
+        height: chunks[7].height.saturating_sub(1),
+        ..chunks[7]
+    };
+    if chunks[7].height > 0 {
+        let divider = Rect {
+            y: chunks[7].y + input_area.height,
+            height: 1,
+            ..chunks[7]
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "─".repeat(divider.width as usize),
+                Style::default().fg(rgb(85, 92, 105)),
+            ))),
+            divider,
+        );
+    }
+
     let input_cursor = input_ui::draw_input(
         frame,
         app,
-        chunks[7],
+        input_area,
         user_count + pending_count + 1,
         &mut debug_capture,
     );

@@ -538,7 +538,7 @@ fn usage_footer_stays_below_multiline_input() {
         assert!(
             text.lines()
                 .skip(input_row + 1)
-                .filter(|line| !line.trim().is_empty())
+                .filter(|line| !line.trim().is_empty() && !line.contains("────"))
                 .count()
                 <= 3,
             "footer must occupy at most three rows:\n{text}"
@@ -567,8 +567,9 @@ fn composer_is_bottom_anchored_with_divider() {
             .iter()
             .position(|row| row.contains("BOTTOM_INPUT"))
             .expect(&text);
-        assert_eq!(input, height as usize - 4, "{text}");
+        assert_eq!(input, height as usize - 5, "{text}");
         assert!(rows[input - 1].contains("────"), "{text}");
+        assert!(rows[input + 1].contains("────"), "{text}");
         assert!(rows[height as usize - 1].contains("Claude"), "{text}");
     }
 }
