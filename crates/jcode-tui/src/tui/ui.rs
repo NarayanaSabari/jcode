@@ -3114,7 +3114,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let footer_budget = chat_area
         .height
         .saturating_sub(composer_reserved)
-        .min(chat_area.height / 2) as usize;
+        .min(chat_area.height / 2)
+        .min(3) as usize;
     if footer_budget == 0 {
         footer_lines.clear();
     } else if footer_lines.len() > footer_budget {

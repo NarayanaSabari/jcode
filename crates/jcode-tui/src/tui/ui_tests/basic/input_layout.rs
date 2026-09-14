@@ -535,5 +535,13 @@ fn usage_footer_stays_below_multiline_input() {
             context_row > input_row,
             "footer must follow all input rows:\n{text}"
         );
+        assert!(
+            text.lines()
+                .skip(input_row + 1)
+                .filter(|line| !line.trim().is_empty())
+                .count()
+                <= 3,
+            "footer must occupy at most three rows:\n{text}"
+        );
     }
 }
